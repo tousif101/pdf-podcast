@@ -6,6 +6,7 @@ import { ACTIVE_STATUSES } from "./format";
 import UploadZone from "./UploadZone";
 import EpisodeCard from "./EpisodeCard";
 import Player from "./Player";
+import BuyCredits from "./BuyCredits";
 
 const POLL_INTERVAL_MS = 2500;
 const RECENT_EPISODE_WINDOW_MS = 2 * 60 * 1000;
@@ -26,6 +27,9 @@ export default function PodcastApp({ userEmail, onSignOut }: PodcastAppProps) {
     isAdmin: boolean;
   } | null>(null);
 
+  const [showBuy, setShowBuy] = useState(false);
+  const [purchaseNote, setPurchaseNote] = useState<string | null>(null);
+
   const refreshCredits = useCallback(() => {
     fetch("/api/credits", { cache: "no-store" })
       .then((res) => (res.ok ? res.json() : null))
@@ -37,6 +41,28 @@ export default function PodcastApp({ userEmail, onSignOut }: PodcastAppProps) {
 
   useEffect(() => {
     refreshCredits();
+  }, [refreshCredits]);
+
+  // Returning from Stripe checkout: acknowledge and re-check the balance
+  // (the webhook may land a second or two after the redirect).
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const purchase = params.get("purchase");
+    if (!purchase) return;
+    window.history.replaceState({}, "", window.location.pathname);
+    if (purchase === "success") {
+      setPurchaseNote("Payment received — credits are on the way.");
+      const timers = [2000, 5000, 10000].map((ms) =>
+        setTimeout(refreshCredits, ms),
+      );
+      const clear = setTimeout(() => setPurchaseNote(null), 8000);
+      return () => [...timers, clear].forEach(clearTimeout);
+    }
+    if (purchase === "cancelled") {
+      setPurchaseNote("Checkout cancelled — no charge was made.");
+      const clear = setTimeout(() => setPurchaseNote(null), 6000);
+      return () => clearTimeout(clear);
+    }
   }, [refreshCredits]);
 
   const requestSeqRef = useRef(0);
@@ -218,19 +244,25 @@ export default function PodcastApp({ userEmail, onSignOut }: PodcastAppProps) {
             </h1>
             <p className="truncate text-xs text-zinc-400">{userEmail}</p>
           </div>
-          {credits && (
-            <span
-              className="shrink-0 rounded-full bg-violet-500/15 px-3 py-1 text-xs font-medium text-violet-300"
-              aria-label={
-                credits.isAdmin
-                  ? "Unlimited credits"
-                  : `${credits.balance} credits`
-              }
-            >
-              {credits.isAdmin ? "∞" : credits.balance}{" "}
-              {credits.isAdmin ? "" : credits.balance === 1 ? "credit" : "credits"}
-            </span>
-          )}
+          {credits &&
+            (credits.isAdmin ? (
+              <span
+                className="shrink-0 rounded-full bg-violet-500/15 px-3 py-1 text-xs font-medium text-violet-300"
+                aria-label="Unlimited credits"
+              >
+                ∞
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowBuy(true)}
+                aria-label={`${credits.balance} credits — buy more`}
+                className="shrink-0 rounded-full bg-violet-500/15 px-3 py-1 text-xs font-medium text-violet-300 hover:bg-violet-500/25"
+              >
+                {credits.balance}{" "}
+                {credits.balance === 1 ? "credit" : "credits"} +
+              </button>
+            ))}
           <button
             type="button"
             onClick={onSignOut}
@@ -242,7 +274,20 @@ export default function PodcastApp({ userEmail, onSignOut }: PodcastAppProps) {
       </header>
 
       <main className="mx-auto w-full max-w-xl flex-1 px-4 pt-6">
-        <UploadZone onQuote={handleQuote} onConfirm={handleUpload} />
+        {purchaseNote && (
+          <p
+            role="status"
+            className="mb-4 rounded-xl border border-violet-500/40 bg-violet-500/10 px-4 py-3 text-sm text-violet-200"
+          >
+            {purchaseNote}
+          </p>
+        )}
+
+        <UploadZone
+          onQuote={handleQuote}
+          onConfirm={handleUpload}
+          onBuyCredits={() => setShowBuy(true)}
+        />
 
         {actionError && (
           <p role="alert" className="mt-4 text-sm text-red-400">
@@ -298,6 +343,8 @@ export default function PodcastApp({ userEmail, onSignOut }: PodcastAppProps) {
           onClose={() => setPlayingId(null)}
         />
       )}
+
+      {showBuy && <BuyCredits onClose={() => setShowBuy(false)} />}
     </div>
   );
 }

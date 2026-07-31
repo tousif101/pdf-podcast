@@ -6,6 +6,7 @@ import type { EpisodeMode, UploadQuote } from "@/lib/types";
 interface UploadZoneProps {
   onQuote: (file: File, mode: EpisodeMode) => Promise<UploadQuote>;
   onConfirm: (file: File, mode: EpisodeMode) => Promise<void>;
+  onBuyCredits: () => void;
 }
 
 const MODES: Array<{ value: EpisodeMode; label: string; hint: string }> = [
@@ -21,7 +22,11 @@ const MODES: Array<{ value: EpisodeMode; label: string; hint: string }> = [
   },
 ];
 
-export default function UploadZone({ onQuote, onConfirm }: UploadZoneProps) {
+export default function UploadZone({
+  onQuote,
+  onConfirm,
+  onBuyCredits,
+}: UploadZoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragActive, setDragActive] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -95,18 +100,28 @@ export default function UploadZone({ onQuote, onConfirm }: UploadZoneProps) {
         </p>
         {!affordable && (
           <p className="mt-2 text-sm text-amber-400">
-            Not enough credits. Credit packs are coming soon.
+            Not enough credits for this episode.
           </p>
         )}
         <div className="mt-4 flex gap-2">
-          <button
-            type="button"
-            onClick={() => void handleConfirm()}
-            disabled={busy || !affordable}
-            className="flex-1 rounded-xl bg-violet-500 px-4 py-2.5 font-medium text-white hover:bg-violet-400 disabled:opacity-50"
-          >
-            {busy ? "Starting…" : "Generate"}
-          </button>
+          {affordable ? (
+            <button
+              type="button"
+              onClick={() => void handleConfirm()}
+              disabled={busy}
+              className="flex-1 rounded-xl bg-violet-500 px-4 py-2.5 font-medium text-white hover:bg-violet-400 disabled:opacity-50"
+            >
+              {busy ? "Starting…" : "Generate"}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onBuyCredits}
+              className="flex-1 rounded-xl bg-violet-500 px-4 py-2.5 font-medium text-white hover:bg-violet-400"
+            >
+              Buy credits
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setPending(null)}
