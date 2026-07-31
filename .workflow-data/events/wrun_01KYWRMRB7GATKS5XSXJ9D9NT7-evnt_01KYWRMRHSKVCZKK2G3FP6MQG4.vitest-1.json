@@ -1,0 +1,16 @@
+{
+  "eventType": "step_created",
+  "specVersion": 3,
+  "correlationId": "step_01KYWRMRB9TFY5Y2TSJS9VF1F3",
+  "eventData": {
+    "stepName": "step//./workflows/generate-episode//failStep",
+    "workflowName": "workflow//./workflows/generate-episode//generateEpisode",
+    "input": {
+      "__type": "Uint8Array",
+      "data": "ZGV2bFt7ImFyZ3MiOjEsImNsb3N1cmVWYXJzIjotMSwidGhpc1ZhbCI6LTF9LFsyLDNdLCIyMjIyMjIyMi0yMjIyLTQyMjItODIyMi0yMjIyMjIyMjIyMjIiLCJTb3VyY2UgUERGIGlzIG1pc3NpbmciXQ=="
+    }
+  },
+  "runId": "wrun_01KYWRMRB7GATKS5XSXJ9D9NT7",
+  "eventId": "evnt_01KYWRMRHSKVCZKK2G3FP6MQG4",
+  "createdAt": "2026-07-31T18:58:01.913Z"
+}

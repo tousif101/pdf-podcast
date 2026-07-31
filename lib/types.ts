@@ -46,8 +46,6 @@ export interface Episode {
   extractedChars?: number;
   script?: PodcastScript;
   audioMimeType?: string;
-  /** Absolute URL when stored in Blob; undefined when served via the audio route. */
-  audioUrl?: string;
   durationSeconds?: number;
   providers?: { script: string; tts: string };
 }

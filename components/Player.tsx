@@ -10,7 +10,18 @@ interface PlayerProps {
 }
 
 const SKIP_SECONDS = 15;
+const SPEEDS = [1, 1.25, 1.5, 2, 3, 0.75];
+const SPEED_KEY = "playback-speed";
 const RESUME_KEY_PREFIX = "resume:";
+
+function readSavedSpeed(): number {
+  try {
+    const v = Number(localStorage.getItem(SPEED_KEY));
+    return SPEEDS.includes(v) ? v : 1;
+  } catch {
+    return 1;
+  }
+}
 const RESUME_SAVE_INTERVAL_S = 3;
 // Don't bother resuming right at the start, and restart finished episodes.
 const RESUME_MIN_S = 10;
@@ -57,6 +68,26 @@ export default function Player({ episode, onClose }: PlayerProps) {
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(episode.durationSeconds ?? 0);
+  const [speed, setSpeed] = useState(1);
+
+  useEffect(() => {
+    const saved = readSavedSpeed();
+    setSpeed(saved);
+    if (audioRef.current) audioRef.current.playbackRate = saved;
+  }, []);
+
+  const cycleSpeed = useCallback(() => {
+    setSpeed((current) => {
+      const next = SPEEDS[(SPEEDS.indexOf(current) + 1) % SPEEDS.length];
+      if (audioRef.current) audioRef.current.playbackRate = next;
+      try {
+        localStorage.setItem(SPEED_KEY, String(next));
+      } catch {
+        // best-effort
+      }
+      return next;
+    });
+  }, []);
 
   const src = `/api/episodes/${episode.id}/audio`;
 
@@ -256,7 +287,15 @@ export default function Player({ episode, onClose }: PlayerProps) {
           <span>{formatTime(duration)}</span>
         </div>
 
-        <div className="mt-1 flex items-center justify-center gap-8">
+        <div className="mt-1 flex items-center justify-center gap-6">
+          <button
+            type="button"
+            onClick={cycleSpeed}
+            aria-label={`Playback speed ${speed}x, tap to change`}
+            className="w-12 shrink-0 rounded-full px-2 py-1 text-sm font-semibold tabular-nums text-zinc-300 hover:bg-zinc-800 hover:text-white"
+          >
+            {speed}×
+          </button>
           <button
             type="button"
             onClick={() => {
@@ -336,13 +375,17 @@ export default function Player({ episode, onClose }: PlayerProps) {
               15
             </span>
           </button>
+
+          {/* Balances the speed button so play/pause stays centered. */}
+          <span className="w-12 shrink-0" aria-hidden="true" />
         </div>
 
         <audio
           ref={audioRef}
           src={src}
           preload="metadata"
-          onPlay={() => {
+          onPlay={(event) => {
+            event.currentTarget.playbackRate = speed;
             setPlaying(true);
             setSessionPlaybackState("playing");
           }}

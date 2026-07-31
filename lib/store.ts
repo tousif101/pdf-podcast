@@ -29,14 +29,9 @@ export interface EpisodeStore {
   delete(id: string): Promise<void>;
   saveSource(id: string, data: Uint8Array): Promise<void>;
   getSource(id: string): Promise<Uint8Array | null>;
-  saveAudio(
-    id: string,
-    data: Uint8Array,
-    mimeType: string,
-  ): Promise<{ url?: string }>;
-  getAudio(
-    id: string,
-  ): Promise<{ data?: Uint8Array; url?: string; mimeType: string } | null>;
+  saveAudio(id: string, data: Uint8Array, mimeType: string): Promise<void>;
+  /** Streaming audio response honoring an optional Range header, or null. */
+  openAudio(id: string, range: string | null): Promise<AudioResponse | null>;
 }
 
 const AUDIO_EXT: Record<string, string> = {
@@ -132,7 +127,6 @@ type EpisodeRow = {
   extracted_chars: number | null;
   script: Episode["script"] | null;
   audio_mime_type: string | null;
-  audio_url: string | null;
   duration_seconds: number | null;
   providers: Episode["providers"] | null;
 };
@@ -151,7 +145,6 @@ function rowToEpisode(row: EpisodeRow): Episode {
     extractedChars: row.extracted_chars ?? undefined,
     script: row.script ?? undefined,
     audioMimeType: row.audio_mime_type ?? undefined,
-    audioUrl: row.audio_url ?? undefined,
     durationSeconds: row.duration_seconds ?? undefined,
     providers: row.providers ?? undefined,
   };
@@ -174,7 +167,6 @@ function episodeToRow(fields: Partial<Episode>): Partial<EpisodeRow> {
   if (fields.script !== undefined) row.script = fields.script;
   if (fields.audioMimeType !== undefined)
     row.audio_mime_type = fields.audioMimeType;
-  if (fields.audioUrl !== undefined) row.audio_url = fields.audioUrl;
   if (fields.durationSeconds !== undefined)
     row.duration_seconds = fields.durationSeconds;
   if (fields.providers !== undefined) row.providers = fields.providers;
@@ -257,19 +249,71 @@ class SupabaseMeta implements MetaDriver {
 // ---------------------------------------------------------------------------
 // Binary drivers (source PDFs + rendered audio)
 
+export interface AudioResponse {
+  status: number;
+  headers: Record<string, string>;
+  body: ReadableStream<Uint8Array> | Uint8Array;
+}
+
 interface BinaryDriver {
   saveSource(id: string, data: Uint8Array): Promise<void>;
   getSource(id: string): Promise<Uint8Array | null>;
-  saveAudio(
-    id: string,
-    data: Uint8Array,
-    mimeType: string,
-  ): Promise<{ url?: string }>;
-  getAudio(
+  saveAudio(id: string, data: Uint8Array, mimeType: string): Promise<void>;
+  /** Streams audio (honoring an optional Range header) through the caller. */
+  openAudio(
     id: string,
     mimeType: string,
-  ): Promise<{ data?: Uint8Array; url?: string } | null>;
+    range: string | null,
+  ): Promise<AudioResponse | null>;
   delete(id: string, mimeType?: string): Promise<void>;
+}
+
+function sliceRange(
+  data: Uint8Array,
+  mimeType: string,
+  range: string | null,
+): AudioResponse {
+  const total = data.byteLength;
+  const base: Record<string, string> = {
+    "Content-Type": mimeType,
+    "Accept-Ranges": "bytes",
+    "Cache-Control": "private, max-age=31536000, immutable",
+  };
+  const match = range ? /bytes=(\d*)-(\d*)/.exec(range) : null;
+  if (match && (match[1] || match[2])) {
+    let start: number;
+    let end: number;
+    if (!match[1]) {
+      const suffix = Math.min(parseInt(match[2], 10), total);
+      start = total - suffix;
+      end = total - 1;
+    } else {
+      start = parseInt(match[1], 10);
+      end = match[2] ? Math.min(parseInt(match[2], 10), total - 1) : total - 1;
+    }
+    if (start <= end && start < total) {
+      const chunk = data.slice(start, end + 1);
+      return {
+        status: 206,
+        headers: {
+          ...base,
+          "Content-Range": `bytes ${start}-${end}/${total}`,
+          "Content-Length": String(chunk.byteLength),
+        },
+        body: chunk,
+      };
+    }
+    return {
+      status: 416,
+      headers: { "Accept-Ranges": "bytes", "Content-Range": `bytes */${total}` },
+      body: new Uint8Array(0),
+    };
+  }
+  return {
+    status: 200,
+    headers: { ...base, "Content-Length": String(total) },
+    body: data,
+  };
 }
 
 class FsBinary implements BinaryDriver {
@@ -297,21 +341,16 @@ class FsBinary implements BinaryDriver {
 
   async saveAudio(id: string, data: Uint8Array, mimeType: string) {
     const ext = AUDIO_EXT[mimeType] ?? "bin";
-    await fs.writeFile(
-      path.join(await this.dir("audio"), `${id}.${ext}`),
-      data,
-    );
-    return {};
+    await fs.writeFile(path.join(await this.dir("audio"), `${id}.${ext}`), data);
   }
 
-  async getAudio(id: string, mimeType: string) {
+  async openAudio(id: string, mimeType: string, range: string | null) {
     const ext = AUDIO_EXT[mimeType] ?? "bin";
     try {
-      return {
-        data: new Uint8Array(
-          await fs.readFile(path.join(this.root, "audio", `${id}.${ext}`)),
-        ),
-      };
+      const data = new Uint8Array(
+        await fs.readFile(path.join(this.root, "audio", `${id}.${ext}`)),
+      );
+      return sliceRange(data, mimeType, range);
     } catch {
       return null;
     }
@@ -336,7 +375,7 @@ class BlobBinary implements BinaryDriver {
   async saveSource(id: string, data: Uint8Array): Promise<void> {
     const { put } = await this.blob();
     await put(`sources/${id}.pdf`, Buffer.from(data), {
-      access: "public",
+      access: "private",
       addRandomSuffix: false,
       allowOverwrite: true,
       contentType: "application/pdf",
@@ -344,29 +383,48 @@ class BlobBinary implements BinaryDriver {
   }
 
   async getSource(id: string): Promise<Uint8Array | null> {
-    const { list } = await this.blob();
-    const { blobs } = await list({ prefix: `sources/${id}.pdf` });
-    if (blobs.length === 0) return null;
-    const res = await fetch(blobs[0].url, { cache: "no-store" });
-    if (!res.ok) return null;
-    return new Uint8Array(await res.arrayBuffer());
+    const { get } = await this.blob();
+    const result = await get(`sources/${id}.pdf`, { access: "private" });
+    if (!result?.stream) return null;
+    return new Uint8Array(await new Response(result.stream).arrayBuffer());
   }
 
   async saveAudio(id: string, data: Uint8Array, mimeType: string) {
     const { put } = await this.blob();
     const ext = AUDIO_EXT[mimeType] ?? "bin";
-    const blob = await put(`audio/${id}.${ext}`, Buffer.from(data), {
-      access: "public",
+    await put(`audio/${id}.${ext}`, Buffer.from(data), {
+      access: "private",
       addRandomSuffix: false,
       allowOverwrite: true,
       contentType: mimeType,
     });
-    return { url: blob.url };
   }
 
-  async getAudio(): Promise<null> {
-    // Blob audio is always reached via the stored public URL on the episode.
-    return null;
+  async openAudio(id: string, mimeType: string, range: string | null) {
+    const { get } = await this.blob();
+    const ext = AUDIO_EXT[mimeType] ?? "bin";
+    // Pass the client's Range through to origin so we stream partial content
+    // without buffering the whole file in the function.
+    const result = await get(`audio/${id}.${ext}`, {
+      access: "private",
+      ...(range ? { headers: { Range: range } } : {}),
+    });
+    if (!result?.stream) return null;
+    const src = result.headers;
+    const headers: Record<string, string> = {
+      "Content-Type": src.get("content-type") ?? mimeType,
+      "Accept-Ranges": "bytes",
+      "Cache-Control": "private, max-age=31536000, immutable",
+    };
+    const contentRange = src.get("content-range");
+    const contentLength = src.get("content-length");
+    if (contentRange) headers["Content-Range"] = contentRange;
+    if (contentLength) headers["Content-Length"] = contentLength;
+    return {
+      status: range && contentRange ? 206 : 200,
+      headers,
+      body: result.stream,
+    };
   }
 
   async delete(id: string, mimeType?: string): Promise<void> {
@@ -432,14 +490,15 @@ class CompositeStore implements EpisodeStore {
     return this.binary.saveAudio(id, data, mimeType);
   }
 
-  async getAudio(id: string) {
+  async openAudio(id: string, range: string | null) {
     assertId(id);
     const episode = await this.meta.get(id);
     if (!episode) return null;
-    const mimeType = episode.audioMimeType ?? "audio/wav";
-    if (episode.audioUrl) return { url: episode.audioUrl, mimeType };
-    const audio = await this.binary.getAudio(id, mimeType);
-    return audio?.data ? { data: audio.data, mimeType } : null;
+    return this.binary.openAudio(
+      id,
+      episode.audioMimeType ?? "audio/wav",
+      range,
+    );
   }
 }
 

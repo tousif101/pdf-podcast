@@ -91,12 +91,11 @@ async function synthesizeStep(episodeId: string, script: PodcastScript) {
     script,
     episode.mode ?? "conversation",
   );
-  const { url } = await store.saveAudio(episodeId, audio, mimeType);
+  await store.saveAudio(episodeId, audio, mimeType);
 
   await store.patch(episodeId, {
     status: "ready",
     audioMimeType: mimeType,
-    audioUrl: url,
     durationSeconds: Math.round(durationSeconds),
     providers: {
       script: episode.providers?.script ?? "",

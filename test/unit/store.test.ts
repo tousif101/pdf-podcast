@@ -138,23 +138,34 @@ test("getSource returns null when no source was saved", async () => {
   assert.equal(await store.getSource(other), null);
 });
 
-test("saved audio is retrievable and reports its mime type", async () => {
+test("saved audio streams back in full with a 200 and content type", async () => {
   const store = storeModule.getStore();
   await store.patch(VALID_ID, { audioMimeType: "audio/wav" });
   const wav = new Uint8Array([1, 2, 3, 4]);
-  const saveResult = await store.saveAudio(VALID_ID, wav, "audio/wav");
-  assert.equal(saveResult.url, undefined, "fs driver returns no public url");
-  const audio = await store.getAudio(VALID_ID);
+  await store.saveAudio(VALID_ID, wav, "audio/wav");
+  const audio = await store.openAudio(VALID_ID, null);
   assert.ok(audio);
-  assert.equal(audio.mimeType, "audio/wav");
-  assert.ok("data" in audio && audio.data);
-  assert.deepEqual(Array.from(audio.data!), Array.from(wav));
+  assert.equal(audio.status, 200);
+  assert.equal(audio.headers["Content-Type"], "audio/wav");
+  assert.ok(audio.body instanceof Uint8Array);
+  assert.deepEqual(Array.from(audio.body as Uint8Array), Array.from(wav));
 });
 
-test("getAudio returns null when the episode itself is gone", async () => {
+test("openAudio serves a 206 partial response for a Range request", async () => {
+  const store = storeModule.getStore();
+  await store.patch(VALID_ID, { audioMimeType: "audio/wav" });
+  await store.saveAudio(VALID_ID, new Uint8Array([10, 11, 12, 13, 14]), "audio/wav");
+  const audio = await store.openAudio(VALID_ID, "bytes=1-3");
+  assert.ok(audio);
+  assert.equal(audio.status, 206);
+  assert.equal(audio.headers["Content-Range"], "bytes 1-3/5");
+  assert.deepEqual(Array.from(audio.body as Uint8Array), [11, 12, 13]);
+});
+
+test("openAudio returns null when the episode itself is gone", async () => {
   const store = storeModule.getStore();
   const missing = "55555555-5555-4555-8555-555555555555";
-  assert.equal(await store.getAudio(missing), null);
+  assert.equal(await store.openAudio(missing, null), null);
 });
 
 test("list returns only the caller's episodes, newest first", async () => {
@@ -205,5 +216,5 @@ test("delete removes metadata, source and audio", async () => {
 
   assert.equal(await store.get(doomed), null);
   assert.equal(await store.getSource(doomed), null);
-  assert.equal(await store.getAudio(doomed), null);
+  assert.equal(await store.openAudio(doomed, null), null);
 });

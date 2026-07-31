@@ -65,26 +65,17 @@ test("ttsProviderName reports the model when GEMINI_API_KEY is set", () => {
   }
 });
 
-test("synthesizeDialogue in mock mode returns a valid WAV with positive duration", async () => {
+test("synthesizeDialogue in mock mode returns a valid MP3 with positive duration", async () => {
   const saved = clearGeminiEnv();
   try {
     const result = await synthesizeDialogue(script, "conversation");
-    assert.equal(result.mimeType, "audio/wav");
+    assert.equal(result.mimeType, "audio/mpeg");
     assert.ok(result.durationSeconds > 0, "non-empty audio has a duration");
 
-    // Output is a real WAV container.
-    assert.ok(result.audio.byteLength > 44, "larger than a bare header");
-    assert.equal(readAscii(result.audio, 0, 4), "RIFF");
-    assert.equal(readAscii(result.audio, 8, 4), "WAVE");
-
-    // Header data-size matches the actual payload length.
-    const view = new DataView(
-      result.audio.buffer,
-      result.audio.byteOffset,
-      result.audio.byteLength,
-    );
-    const dataSize = view.getUint32(40, true);
-    assert.equal(dataSize, result.audio.byteLength - 44);
+    // Output starts with an MP3 frame sync (11 set bits).
+    assert.ok(result.audio.byteLength > 0, "non-empty payload");
+    assert.equal(result.audio[0], 0xff);
+    assert.equal(result.audio[1] & 0xe0, 0xe0, "MP3 frame sync bits");
   } finally {
     restoreEnv(saved);
   }
@@ -94,7 +85,7 @@ test("mock synthesis defaults to conversation mode when mode is omitted", async 
   const saved = clearGeminiEnv();
   try {
     const result = await synthesizeDialogue(script);
-    assert.equal(result.mimeType, "audio/wav");
+    assert.equal(result.mimeType, "audio/mpeg");
     assert.ok(result.durationSeconds > 0);
   } finally {
     restoreEnv(saved);

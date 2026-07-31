@@ -1,4 +1,5 @@
-import { pcm16ToWav, wavDurationSeconds } from "../audio/wav";
+import { pcm16ToWav } from "../audio/wav";
+import { finalizeAudio } from "../audio/mp3";
 import type { EpisodeMode, PodcastScript } from "../types";
 
 export interface TtsResult {
@@ -30,7 +31,7 @@ export async function synthesizeDialogue(
   script: PodcastScript,
   mode: EpisodeMode = "conversation",
 ): Promise<TtsResult> {
-  if (!geminiApiKey()) return mockTts(script);
+  if (!geminiApiKey()) return finalizeAudio(...mockPcm(script));
   return mode === "reading" ? geminiReadAloud(script) : geminiTts(script);
 }
 
@@ -62,11 +63,7 @@ async function geminiReadAloud(script: PodcastScript): Promise<TtsResult> {
     sampleRate = part.sampleRate;
   }
   const pcm = new Uint8Array(Buffer.concat(pcmParts.map((p) => Buffer.from(p))));
-  return {
-    audio: pcm16ToWav(pcm, sampleRate),
-    mimeType: "audio/wav",
-    durationSeconds: wavDurationSeconds(pcm.byteLength, sampleRate),
-  };
+  return finalizeAudio(pcm, sampleRate);
 }
 
 async function geminiTts(script: PodcastScript): Promise<TtsResult> {
@@ -91,11 +88,7 @@ async function geminiTts(script: PodcastScript): Promise<TtsResult> {
       },
     },
   );
-  return {
-    audio: pcm16ToWav(pcm, sampleRate),
-    mimeType: "audio/wav",
-    durationSeconds: wavDurationSeconds(pcm.byteLength, sampleRate),
-  };
+  return finalizeAudio(pcm, sampleRate);
 }
 
 async function geminiGenerate(
@@ -158,7 +151,7 @@ async function geminiGenerate(
 
 // Speech-paced tones (distinct pitch per speaker) so the full pipeline and
 // player are testable without any TTS credentials.
-function mockTts(script: PodcastScript): TtsResult {
+function mockPcm(script: PodcastScript): [Uint8Array, number] {
   const sampleRate = 24_000;
   const wordSeconds = 0.22;
   const lineGapSeconds = 0.4;
@@ -194,9 +187,5 @@ function mockTts(script: PodcastScript): TtsResult {
   }
 
   const bytes = new Uint8Array(pcm.buffer, 0, totalSamples * 2);
-  return {
-    audio: pcm16ToWav(bytes, sampleRate),
-    mimeType: "audio/wav",
-    durationSeconds: totalSeconds,
-  };
+  return [bytes, sampleRate];
 }
