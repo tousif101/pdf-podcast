@@ -120,6 +120,7 @@ type EpisodeRow = {
   title: string;
   source_filename: string;
   mode: Episode["mode"];
+  options: Episode["options"] | null;
   status: Episode["status"];
   error: string | null;
   created_at: string;
@@ -138,6 +139,7 @@ function rowToEpisode(row: EpisodeRow): Episode {
     title: row.title,
     sourceFilename: row.source_filename,
     mode: row.mode ?? "conversation",
+    options: row.options ?? undefined,
     status: row.status,
     error: row.error ?? undefined,
     createdAt: row.created_at,
@@ -158,6 +160,7 @@ function episodeToRow(fields: Partial<Episode>): Partial<EpisodeRow> {
   if (fields.sourceFilename !== undefined)
     row.source_filename = fields.sourceFilename;
   if (fields.mode !== undefined) row.mode = fields.mode;
+  if (fields.options !== undefined) row.options = fields.options;
   if (fields.status !== undefined) row.status = fields.status;
   if (fields.error !== undefined) row.error = fields.error;
   if (fields.createdAt !== undefined) row.created_at = fields.createdAt;

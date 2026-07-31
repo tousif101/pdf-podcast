@@ -25,6 +25,7 @@ const projectRoot = resolve(testDir, "..");
 const SUITE = [
   "test/unit/wav.test.ts",
   "test/unit/credits.test.ts",
+  "test/unit/options.test.ts",
   "test/unit/billing.test.ts",
   "test/unit/auth.test.ts",
   "test/unit/script.test.ts",

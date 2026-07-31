@@ -1,26 +1,122 @@
 "use client";
 
 import { useRef, useState } from "react";
-import type { EpisodeMode, UploadQuote } from "@/lib/types";
+import type {
+  EpisodeAudience,
+  EpisodeFormat,
+  EpisodeLength,
+  EpisodeMode,
+  EpisodeOptions,
+  UploadQuote,
+} from "@/lib/types";
+import { VOICES } from "@/lib/voices";
+import { isSingleVoiceFormat, normalizeOptions } from "@/lib/options";
 
 interface UploadZoneProps {
-  onQuote: (file: File, mode: EpisodeMode) => Promise<UploadQuote>;
-  onConfirm: (file: File, mode: EpisodeMode) => Promise<void>;
+  onQuote: (
+    file: File,
+    mode: EpisodeMode,
+    options: EpisodeOptions,
+  ) => Promise<UploadQuote>;
+  onConfirm: (
+    file: File,
+    mode: EpisodeMode,
+    options: EpisodeOptions,
+  ) => Promise<void>;
   onBuyCredits: () => void;
 }
 
 const MODES: Array<{ value: EpisodeMode; label: string; hint: string }> = [
-  {
-    value: "conversation",
-    label: "Conversation",
-    hint: "Two hosts discuss the document",
-  },
-  {
-    value: "reading",
-    label: "Read aloud",
-    hint: "One calm voice reads the text verbatim",
-  },
+  { value: "conversation", label: "Conversation", hint: "Hosts discuss the document" },
+  { value: "reading", label: "Read aloud", hint: "One voice reads the text verbatim" },
 ];
+
+const LENGTHS: Array<{ value: EpisodeLength; label: string }> = [
+  { value: "short", label: "Short" },
+  { value: "standard", label: "Standard" },
+  { value: "deep", label: "Deep" },
+];
+
+const FORMATS: Array<{ value: EpisodeFormat; label: string }> = [
+  { value: "discussion", label: "Discussion" },
+  { value: "brief", label: "Brief" },
+  { value: "debate", label: "Debate" },
+  { value: "lecture", label: "Lecture" },
+];
+
+const AUDIENCES: Array<{ value: EpisodeAudience; label: string }> = [
+  { value: "beginner", label: "Beginner" },
+  { value: "expert", label: "Expert" },
+];
+
+function Segmented<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  value: T;
+  options: Array<{ value: T; label: string }>;
+  onChange: (v: T) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div>
+      <p className="mb-1.5 text-xs font-medium text-zinc-500">{label}</p>
+      <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={label}>
+        {options.map((o) => (
+          <button
+            key={o.value}
+            type="button"
+            role="radio"
+            aria-checked={value === o.value}
+            disabled={disabled}
+            onClick={() => onChange(o.value)}
+            className={`rounded-lg border px-3 py-1.5 text-sm transition-colors ${
+              value === o.value
+                ? "border-violet-500/70 bg-violet-500/10 text-zinc-50"
+                : "border-zinc-800 bg-zinc-900/40 text-zinc-400 hover:border-zinc-600"
+            }`}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function VoiceSelect({
+  label,
+  value,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <label className="flex-1">
+      <span className="mb-1.5 block text-xs font-medium text-zinc-500">{label}</span>
+      <select
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-2 text-sm text-zinc-100 focus:border-violet-500 focus:outline-none"
+      >
+        {VOICES.map((v) => (
+          <option key={v.id} value={v.id}>
+            {v.label} — {v.description}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
 
 export default function UploadZone({
   onQuote,
@@ -32,10 +128,18 @@ export default function UploadZone({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<EpisodeMode>("conversation");
+  const [options, setOptions] = useState<EpisodeOptions>(() =>
+    normalizeOptions({}),
+  );
   const [pending, setPending] = useState<{
     file: File;
     quote: UploadQuote;
   } | null>(null);
+
+  const set = <K extends keyof EpisodeOptions>(key: K, v: EpisodeOptions[K]) =>
+    setOptions((o) => ({ ...o, [key]: v }));
+
+  const singleVoice = isSingleVoiceFormat(options.format);
 
   const handleFile = async (file: File | null | undefined) => {
     if (!file || busy) return;
@@ -49,7 +153,7 @@ export default function UploadZone({
     setBusy(true);
     setError(null);
     try {
-      const quote = await onQuote(file, mode);
+      const quote = await onQuote(file, mode, options);
       setPending({ file, quote });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not read the PDF.");
@@ -64,7 +168,7 @@ export default function UploadZone({
     setBusy(true);
     setError(null);
     try {
-      await onConfirm(pending.file, mode);
+      await onConfirm(pending.file, mode, options);
       setPending(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed.");
@@ -83,7 +187,8 @@ export default function UploadZone({
         <p className="truncate font-medium text-zinc-100">{file.name}</p>
         <p className="mt-1 text-sm text-zinc-400">
           {quote.pages} {quote.pages === 1 ? "page" : "pages"} · ≈
-          {quote.estMinutes} min of audio · {selectedMode.label.toLowerCase()}
+          {quote.estMinutes} min · {selectedMode.label.toLowerCase()}
+          {mode === "conversation" ? ` · ${options.format}` : ""}
         </p>
         <p className="mt-3 text-sm">
           {quote.isAdmin ? (
@@ -165,7 +270,61 @@ export default function UploadZone({
           </button>
         ))}
       </div>
-      <p className="mb-3 text-xs text-zinc-500">{selectedMode.hint}.</p>
+
+      <div className="mb-4 space-y-3 rounded-xl border border-zinc-800/70 bg-zinc-900/30 p-3">
+        <Segmented
+          label="Length"
+          value={options.length}
+          options={LENGTHS}
+          onChange={(v) => set("length", v)}
+          disabled={busy}
+        />
+        {mode === "conversation" && (
+          <>
+            <Segmented
+              label="Format"
+              value={options.format}
+              options={FORMATS}
+              onChange={(v) => set("format", v)}
+              disabled={busy}
+            />
+            <Segmented
+              label="Audience"
+              value={options.audience}
+              options={AUDIENCES}
+              onChange={(v) => set("audience", v)}
+              disabled={busy}
+            />
+            <div className="flex gap-2">
+              <VoiceSelect
+                label={singleVoice ? "Voice" : "Host voice"}
+                value={options.hostVoice}
+                onChange={(v) => set("hostVoice", v)}
+                disabled={busy}
+              />
+              {!singleVoice && (
+                <VoiceSelect
+                  label="Guest voice"
+                  value={options.guestVoice}
+                  onChange={(v) => set("guestVoice", v)}
+                  disabled={busy}
+                />
+              )}
+            </div>
+          </>
+        )}
+        {mode === "reading" && (
+          <div className="flex gap-2">
+            <VoiceSelect
+              label="Voice"
+              value={options.readerVoice}
+              onChange={(v) => set("readerVoice", v)}
+              disabled={busy}
+            />
+          </div>
+        )}
+      </div>
+
       <button
         type="button"
         onClick={() => inputRef.current?.click()}
@@ -213,9 +372,7 @@ export default function UploadZone({
           {busy ? "Reading PDF…" : "Upload a PDF"}
         </span>
         <span className="mt-1 block text-sm text-zinc-400">
-          {busy
-            ? "Calculating episode price"
-            : "Tap to browse or drop a file here"}
+          {busy ? "Calculating episode price" : selectedMode.hint}
         </span>
       </button>
       <input

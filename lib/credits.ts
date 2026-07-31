@@ -1,16 +1,26 @@
 import { getAdminClient, supabaseConfigured } from "./supabase/admin";
-import type { EpisodeMode } from "./types";
+import { LENGTH_BUDGETS } from "./options";
+import type { EpisodeLength, EpisodeMode } from "./types";
 
 // 1 credit ≈ 25 minutes of read-aloud audio; conversations are a fixed-length
 // summary regardless of input size.
 const READ_CHARS_PER_CREDIT = 25_000;
-// Read-aloud is capped at ~100k chars upstream, so cost tops out well under
-// this; the cap guards against any extraction anomaly inflating the charge.
+// Read-aloud is capped by the selected length, so cost tops out here; the cap
+// also guards against any extraction anomaly inflating the charge.
 const MAX_CREDITS_PER_EPISODE = 8;
 
-export function creditCost(mode: EpisodeMode, extractedChars: number): number {
+/** Chars actually spoken = min(extracted, the length budget's read cap). */
+function readableChars(extractedChars: number, length: EpisodeLength): number {
+  return Math.min(Math.max(0, extractedChars), LENGTH_BUDGETS[length].readChars);
+}
+
+export function creditCost(
+  mode: EpisodeMode,
+  extractedChars: number,
+  length: EpisodeLength = "standard",
+): number {
   if (mode === "reading") {
-    const chars = Math.max(0, extractedChars);
+    const chars = readableChars(extractedChars, length);
     return Math.min(
       MAX_CREDITS_PER_EPISODE,
       Math.max(1, Math.ceil(chars / READ_CHARS_PER_CREDIT)),
@@ -19,11 +29,15 @@ export function creditCost(mode: EpisodeMode, extractedChars: number): number {
   return 1;
 }
 
-export function estimateMinutes(mode: EpisodeMode, extractedChars: number): number {
+export function estimateMinutes(
+  mode: EpisodeMode,
+  extractedChars: number,
+  length: EpisodeLength = "standard",
+): number {
   if (mode === "reading") {
-    return Math.max(1, Math.round(extractedChars / 1_000));
+    return Math.max(1, Math.round(readableChars(extractedChars, length) / 1_000));
   }
-  return 7;
+  return LENGTH_BUDGETS[length].approxMinutes;
 }
 
 /** Credits are enforced only when Supabase is configured (always, in production). */

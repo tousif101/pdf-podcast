@@ -1,6 +1,11 @@
-import { pcm16ToWav } from "../audio/wav";
 import { finalizeAudio } from "../audio/mp3";
-import type { EpisodeMode, PodcastScript } from "../types";
+import type { EpisodeMode, EpisodeOptions, PodcastScript } from "../types";
+import { isSingleVoiceFormat } from "../options";
+import {
+  DEFAULT_GUEST_VOICE,
+  DEFAULT_HOST_VOICE,
+  DEFAULT_READER_VOICE,
+} from "../voices";
 
 export interface TtsResult {
   audio: Uint8Array;
@@ -11,11 +16,7 @@ export interface TtsResult {
 const GEMINI_SAMPLE_RATE = 24_000;
 const GEMINI_TTS_MODEL =
   process.env.PODCAST_TTS_MODEL ?? "gemini-2.5-flash-preview-tts";
-const HOST_VOICE = process.env.PODCAST_HOST_VOICE ?? "Kore";
-const GUEST_VOICE = process.env.PODCAST_GUEST_VOICE ?? "Puck";
-// Soft, breathy prebuilt voice for read-aloud mode.
-const READER_VOICE = process.env.PODCAST_READER_VOICE ?? "Enceladus";
-const READ_TTS_CHUNK_CHARS = 3_500;
+const SINGLE_TTS_CHUNK_CHARS = 3_500;
 
 function geminiApiKey(): string | undefined {
   return (
@@ -30,18 +31,41 @@ export function ttsProviderName(): string {
 export async function synthesizeDialogue(
   script: PodcastScript,
   mode: EpisodeMode = "conversation",
+  options?: EpisodeOptions,
 ): Promise<TtsResult> {
   if (!geminiApiKey()) return finalizeAudio(...mockPcm(script));
-  return mode === "reading" ? geminiReadAloud(script) : geminiTts(script);
+  const readerVoice = options?.readerVoice ?? DEFAULT_READER_VOICE;
+  const hostVoice = options?.hostVoice ?? DEFAULT_HOST_VOICE;
+  const guestVoice = options?.guestVoice ?? DEFAULT_GUEST_VOICE;
+
+  if (mode === "reading") {
+    return geminiSingleVoice(
+      script,
+      readerVoice,
+      "Read the following text aloud in a calm, warm, soothing voice at a relaxed pace:",
+    );
+  }
+  if (options && isSingleVoiceFormat(options.format)) {
+    return geminiSingleVoice(
+      script,
+      hostVoice,
+      "Narrate the following in a clear, engaging voice:",
+    );
+  }
+  return geminiTts(script, hostVoice, guestVoice);
 }
 
-// Single soothing voice reading the text verbatim, chunked to keep each
-// request small; PCM chunks share a sample rate and concatenate cleanly.
-async function geminiReadAloud(script: PodcastScript): Promise<TtsResult> {
+// One voice, chunked to keep each request small; PCM chunks share a sample
+// rate and concatenate cleanly. Used by read-aloud and single-voice formats.
+async function geminiSingleVoice(
+  script: PodcastScript,
+  voiceName: string,
+  instruction: string,
+): Promise<TtsResult> {
   const chunks: string[] = [];
   let current = "";
   for (const line of script.lines) {
-    if (current && current.length + line.text.length + 1 > READ_TTS_CHUNK_CHARS) {
+    if (current && current.length + line.text.length + 1 > SINGLE_TTS_CHUNK_CHARS) {
       chunks.push(current);
       current = line.text;
     } else {
@@ -53,12 +77,9 @@ async function geminiReadAloud(script: PodcastScript): Promise<TtsResult> {
   const pcmParts: Uint8Array[] = [];
   let sampleRate = GEMINI_SAMPLE_RATE;
   for (const chunk of chunks) {
-    const part = await geminiGenerate(
-      `Read the following text aloud in a calm, warm, soothing voice at a relaxed pace:\n${chunk}`,
-      {
-        voiceConfig: { prebuiltVoiceConfig: { voiceName: READER_VOICE } },
-      },
-    );
+    const part = await geminiGenerate(`${instruction}\n${chunk}`, {
+      voiceConfig: { prebuiltVoiceConfig: { voiceName } },
+    });
     pcmParts.push(part.pcm);
     sampleRate = part.sampleRate;
   }
@@ -66,7 +87,11 @@ async function geminiReadAloud(script: PodcastScript): Promise<TtsResult> {
   return finalizeAudio(pcm, sampleRate);
 }
 
-async function geminiTts(script: PodcastScript): Promise<TtsResult> {
+async function geminiTts(
+  script: PodcastScript,
+  hostVoice: string,
+  guestVoice: string,
+): Promise<TtsResult> {
   const transcript = script.lines
     .map((line) => `${line.speaker === "HOST" ? "Host" : "Guest"}: ${line.text}`)
     .join("\n");
@@ -78,11 +103,11 @@ async function geminiTts(script: PodcastScript): Promise<TtsResult> {
         speakerVoiceConfigs: [
           {
             speaker: "Host",
-            voiceConfig: { prebuiltVoiceConfig: { voiceName: HOST_VOICE } },
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: hostVoice } },
           },
           {
             speaker: "Guest",
-            voiceConfig: { prebuiltVoiceConfig: { voiceName: GUEST_VOICE } },
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: guestVoice } },
           },
         ],
       },

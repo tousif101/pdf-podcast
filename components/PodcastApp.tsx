@@ -1,7 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Episode, EpisodeMode, UploadQuote } from "@/lib/types";
+import type {
+  Episode,
+  EpisodeMode,
+  EpisodeOptions,
+  UploadQuote,
+} from "@/lib/types";
 import { ACTIVE_STATUSES } from "./format";
 import UploadZone from "./UploadZone";
 import EpisodeCard from "./EpisodeCard";
@@ -134,10 +139,15 @@ export default function PodcastApp({ userEmail, onSignOut }: PodcastAppProps) {
   }, [hasActiveEpisode, refresh, refreshCredits]);
 
   const handleQuote = useCallback(
-    async (file: File, mode: EpisodeMode): Promise<UploadQuote> => {
+    async (
+      file: File,
+      mode: EpisodeMode,
+      options: EpisodeOptions,
+    ): Promise<UploadQuote> => {
       const form = new FormData();
       form.append("file", file);
       form.append("mode", mode);
+      form.append("options", JSON.stringify(options));
       const res = await fetch("/api/episodes/quote", {
         method: "POST",
         body: form,
@@ -154,10 +164,11 @@ export default function PodcastApp({ userEmail, onSignOut }: PodcastAppProps) {
   );
 
   const handleUpload = useCallback(
-    async (file: File, mode: EpisodeMode) => {
+    async (file: File, mode: EpisodeMode, options: EpisodeOptions) => {
       const form = new FormData();
       form.append("file", file);
       form.append("mode", mode);
+      form.append("options", JSON.stringify(options));
       const res = await fetch("/api/episodes", { method: "POST", body: form });
       if (!res.ok) {
         const body = (await res.json().catch(() => null)) as {
@@ -172,6 +183,7 @@ export default function PodcastApp({ userEmail, onSignOut }: PodcastAppProps) {
         title: file.name.replace(/\.pdf$/i, ""),
         sourceFilename: file.name,
         mode,
+        options,
         status: "pending",
         createdAt: new Date().toISOString(),
       };

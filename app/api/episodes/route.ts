@@ -3,6 +3,7 @@ import { start } from "workflow/api";
 import { getStore } from "@/lib/store";
 import { getSessionUser } from "@/lib/auth";
 import { creditCost, getBalance, refundEpisode, spendCredits } from "@/lib/credits";
+import { normalizeOptions } from "@/lib/options";
 import {
   extractPdfText,
   looksLikePdf,
@@ -14,6 +15,14 @@ import type { Episode } from "@/lib/types";
 
 // One user can't monopolize the generation queue.
 const MAX_CONCURRENT_GENERATIONS = 3;
+
+function safeJson(raw: string): unknown {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
+}
 
 export async function GET() {
   const user = await getSessionUser();
@@ -48,6 +57,10 @@ export async function POST(request: Request) {
 
   const modeField = form.get("mode");
   const mode = modeField === "reading" ? "reading" : "conversation";
+  const optionsRaw = form.get("options");
+  const options = normalizeOptions(
+    typeof optionsRaw === "string" ? safeJson(optionsRaw) : undefined,
+  );
 
   const store = getStore();
   if (!user.isAdmin) {
@@ -75,7 +88,7 @@ export async function POST(request: Request) {
   }
 
   const episodeId = crypto.randomUUID();
-  const cost = creditCost(mode, extractedChars);
+  const cost = creditCost(mode, extractedChars, options.length);
   if (!user.isAdmin) {
     const ok = await spendCredits(user.id, cost, episodeId);
     if (!ok) {
@@ -93,6 +106,7 @@ export async function POST(request: Request) {
     title: file.name.replace(/\.pdf$/i, "").replace(/[-_]+/g, " "),
     sourceFilename: file.name,
     mode,
+    options,
     status: "pending",
     createdAt: new Date().toISOString(),
   };

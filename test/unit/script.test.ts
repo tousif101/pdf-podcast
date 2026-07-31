@@ -5,6 +5,10 @@ import {
   generatePodcastScript,
   scriptProviderName,
 } from "../../lib/pipeline/script";
+import { normalizeOptions } from "../../lib/options";
+
+const OPTS = normalizeOptions({});
+const READ_CAP = 100_000;
 
 // These tests exercise the deterministic, credential-free code paths:
 //   - verbatimScript (pure, "read aloud" mode)
@@ -30,7 +34,7 @@ function restoreEnv(saved: Record<string, string | undefined>): void {
 }
 
 test("verbatimScript derives a title from the filename", () => {
-  const s = verbatimScript("Some text.", "history-of_coffee.PDF");
+  const s = verbatimScript("Some text.", "history-of_coffee.PDF", READ_CAP);
   // Strips the .pdf extension (case-insensitive) and normalises -/_ to spaces.
   assert.equal(s.title, "history of coffee");
 });
@@ -41,7 +45,7 @@ test("verbatimScript keeps every line under the chunk limit and preserves order"
     (_, i) => `Sentence number ${i} has a little bit of content here.`,
   );
   const source = sentences.join(" ");
-  const s = verbatimScript(source, "doc.pdf");
+  const s = verbatimScript(source, "doc.pdf", READ_CAP);
 
   assert.ok(s.lines.length > 1, "long input is split into multiple lines");
   for (const line of s.lines) {
@@ -55,14 +59,14 @@ test("verbatimScript keeps every line under the chunk limit and preserves order"
 
 test("verbatimScript keeps a sentence longer than the chunk limit intact", () => {
   const giant = "x".repeat(2_000) + ".";
-  const s = verbatimScript(giant, "doc.pdf");
+  const s = verbatimScript(giant, "doc.pdf", READ_CAP);
   // A single oversized sentence can't be split further; it becomes one line.
   assert.equal(s.lines.length, 1);
   assert.equal(s.lines[0].text, giant);
 });
 
 test("verbatimScript produces no lines for empty input", () => {
-  const s = verbatimScript("", "doc.pdf");
+  const s = verbatimScript("", "doc.pdf", READ_CAP);
   assert.deepEqual(s.lines, []);
 });
 
@@ -73,7 +77,7 @@ test("generatePodcastScript falls back to a deterministic mock without credentia
       { length: 100 },
       (_, i) => `This is sentence ${i} with enough words to be sampled here.`,
     ).join(" ");
-    const script = await generatePodcastScript(source, "my-report.pdf");
+    const script = await generatePodcastScript(source, "my-report.pdf", OPTS);
 
     assert.equal(script.title, "my report", "title from filename");
     assert.ok(script.lines.length >= 3, "has intro, body, outro");
@@ -104,8 +108,8 @@ test("mock script is deterministic for identical input", async () => {
       { length: 80 },
       (_, i) => `Deterministic sentence ${i} that is comfortably long enough.`,
     ).join(" ");
-    const a = await generatePodcastScript(source, "doc.pdf");
-    const b = await generatePodcastScript(source, "doc.pdf");
+    const a = await generatePodcastScript(source, "doc.pdf", OPTS);
+    const b = await generatePodcastScript(source, "doc.pdf", OPTS);
     assert.deepEqual(a, b);
   } finally {
     restoreEnv(saved);

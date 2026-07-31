@@ -11,6 +11,20 @@ export type Speaker = "HOST" | "GUEST";
 /** conversation = two-host discussion; reading = one voice reads the text verbatim. */
 export type EpisodeMode = "conversation" | "reading";
 
+export type EpisodeLength = "short" | "standard" | "deep";
+/** Conversation formats. brief & lecture are single-voice; discussion & debate are two-voice. */
+export type EpisodeFormat = "discussion" | "brief" | "debate" | "lecture";
+export type EpisodeAudience = "beginner" | "expert";
+
+export interface EpisodeOptions {
+  length: EpisodeLength;
+  format: EpisodeFormat;
+  audience: EpisodeAudience;
+  hostVoice: string;
+  guestVoice: string;
+  readerVoice: string;
+}
+
 export interface DialogueLine {
   speaker: Speaker;
   text: string;
@@ -39,6 +53,7 @@ export interface Episode {
   title: string;
   sourceFilename: string;
   mode?: EpisodeMode;
+  options?: EpisodeOptions;
   status: EpisodeStatus;
   error?: string;
   createdAt: string;
