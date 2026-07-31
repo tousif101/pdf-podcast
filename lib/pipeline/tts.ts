@@ -78,25 +78,42 @@ async function geminiTts(script: PodcastScript): Promise<TtsResult> {
   );
 
   if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Gemini TTS failed (${res.status}): ${body.slice(0, 500)}`);
+    const body = (await res.text()).slice(0, 200);
+    console.error(`Gemini TTS error ${res.status}: ${body}`);
+    const message = `Speech synthesis failed (Gemini returned ${res.status})`;
+    if (res.status === 429 || res.status >= 500) {
+      const { RetryableError } = await import("workflow");
+      throw new RetryableError(message, { retryAfter: "30s" });
+    }
+    const { FatalError } = await import("workflow");
+    throw new FatalError(message);
   }
 
   const json = (await res.json()) as {
     candidates?: Array<{
-      content?: { parts?: Array<{ inlineData?: { data?: string } }> };
+      content?: {
+        parts?: Array<{ inlineData?: { data?: string; mimeType?: string } }>;
+      };
     }>;
   };
-  const base64 = json.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-  if (!base64) {
-    throw new Error("Gemini TTS returned no audio data");
+  const parts =
+    json.candidates?.[0]?.content?.parts?.filter((p) => p.inlineData?.data) ??
+    [];
+  if (parts.length === 0) {
+    const { FatalError } = await import("workflow");
+    throw new FatalError("Speech synthesis returned no audio data");
   }
 
-  const pcm = new Uint8Array(Buffer.from(base64, "base64"));
+  // Long transcripts come back as multiple inlineData PCM chunks.
+  const pcm = new Uint8Array(
+    Buffer.concat(parts.map((p) => Buffer.from(p.inlineData!.data!, "base64"))),
+  );
+  const rateMatch = /rate=(\d+)/.exec(parts[0].inlineData?.mimeType ?? "");
+  const sampleRate = rateMatch ? parseInt(rateMatch[1], 10) : GEMINI_SAMPLE_RATE;
   return {
-    audio: pcm16ToWav(pcm, GEMINI_SAMPLE_RATE),
+    audio: pcm16ToWav(pcm, sampleRate),
     mimeType: "audio/wav",
-    durationSeconds: wavDurationSeconds(pcm.byteLength, GEMINI_SAMPLE_RATE),
+    durationSeconds: wavDurationSeconds(pcm.byteLength, sampleRate),
   };
 }
 

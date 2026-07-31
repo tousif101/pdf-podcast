@@ -4,7 +4,9 @@ import { getStore } from "@/lib/store";
 import { generateEpisode } from "@/workflows/generate-episode";
 import type { Episode } from "@/lib/types";
 
-const MAX_PDF_BYTES = 25 * 1024 * 1024;
+// Vercel functions reject request bodies over ~4.5 MB before the handler runs,
+// so advertising a bigger limit would produce opaque platform 413s.
+const MAX_PDF_BYTES = 4 * 1024 * 1024;
 
 export async function GET() {
   const episodes = await getStore().list();
@@ -22,7 +24,7 @@ export async function POST(request: Request) {
   }
   if (file.size > MAX_PDF_BYTES) {
     return NextResponse.json(
-      { error: "PDF is too large (25 MB max)" },
+      { error: "PDF is too large (4 MB max)" },
       { status: 413 },
     );
   }
@@ -49,8 +51,20 @@ export async function POST(request: Request) {
     createdAt: new Date().toISOString(),
   };
   await store.saveSource(episode.id, data);
-  await store.put(episode);
-  await start(generateEpisode, [episode.id]);
+  await store.create(episode);
+  try {
+    await start(generateEpisode, [episode.id]);
+  } catch (err) {
+    console.error(`Failed to start workflow for ${episode.id}:`, err);
+    await store.patch(episode.id, {
+      status: "error",
+      error: "Could not start generation. Please retry the upload.",
+    });
+    return NextResponse.json(
+      { error: "Could not start generation" },
+      { status: 500 },
+    );
+  }
 
   return NextResponse.json({ id: episode.id }, { status: 202 });
 }

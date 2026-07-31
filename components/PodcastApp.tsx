@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Episode } from "@/lib/types";
 import { ACTIVE_STATUSES } from "./format";
 import UploadZone from "./UploadZone";
@@ -8,6 +8,7 @@ import EpisodeCard from "./EpisodeCard";
 import Player from "./Player";
 
 const POLL_INTERVAL_MS = 2500;
+const RECENT_EPISODE_WINDOW_MS = 2 * 60 * 1000;
 
 export default function PodcastApp() {
   const [episodes, setEpisodes] = useState<Episode[] | null>(null);
@@ -16,17 +17,49 @@ export default function PodcastApp() {
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
+  const requestSeqRef = useRef(0);
+  const appliedSeqRef = useRef(0);
+  const deletedIdsRef = useRef(new Set<string>());
+
   const refresh = useCallback(() => {
+    const seq = ++requestSeqRef.current;
     fetch("/api/episodes", { cache: "no-store" })
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json() as Promise<{ episodes: Episode[] }>;
       })
       .then((data) => {
-        setEpisodes(data.episodes);
+        if (seq <= appliedSeqRef.current) return;
+        appliedSeqRef.current = seq;
+
+        const deletedIds = deletedIdsRef.current;
+        const serverIds = new Set(data.episodes.map((episode) => episode.id));
+        for (const id of deletedIds) {
+          if (!serverIds.has(id)) deletedIds.delete(id);
+        }
+        const serverEpisodes = data.episodes.filter(
+          (episode) => !deletedIds.has(episode.id),
+        );
+
+        // The backend list is eventually consistent: a just-created episode
+        // can be missing from a response, so keep local entries that are
+        // in-flight or very fresh instead of trusting the server snapshot.
+        const now = Date.now();
+        setEpisodes((prev) => {
+          const localOnly = (prev ?? []).filter(
+            (episode) =>
+              !serverIds.has(episode.id) &&
+              !deletedIds.has(episode.id) &&
+              (ACTIVE_STATUSES.includes(episode.status) ||
+                now - Date.parse(episode.createdAt) <
+                  RECENT_EPISODE_WINDOW_MS),
+          );
+          return [...localOnly, ...serverEpisodes];
+        });
         setLoadError(null);
       })
       .catch(() => {
+        if (seq <= appliedSeqRef.current) return;
         setLoadError("Could not load episodes. Check your connection.");
       });
   }, []);
@@ -59,6 +92,7 @@ export default function PodcastApp() {
       throw new Error(body?.error ?? `Upload failed (${res.status}).`);
     }
     const { id } = (await res.json()) as { id: string };
+    deletedIdsRef.current.delete(id);
     const optimistic: Episode = {
       id,
       title: file.name.replace(/\.pdf$/i, ""),
@@ -81,6 +115,7 @@ export default function PodcastApp() {
       try {
         const res = await fetch(`/api/episodes/${id}`, { method: "DELETE" });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        deletedIdsRef.current.add(id);
         setEpisodes((prev) =>
           prev ? prev.filter((episode) => episode.id !== id) : prev,
         );

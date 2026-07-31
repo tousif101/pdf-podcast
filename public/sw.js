@@ -36,13 +36,31 @@ async function respondToAudio(request) {
   if (cached && cached.status === 200) {
     const rangeHeader = request.headers.get("range");
     if (rangeHeader) {
-      const match = /bytes=(\d+)-(\d*)/i.exec(rangeHeader);
-      if (match) {
+      const match = /bytes=(\d*)-(\d*)/i.exec(rangeHeader);
+      if (match && (match[1] !== "" || match[2] !== "")) {
         const buffer = await cached.arrayBuffer();
         const total = buffer.byteLength;
-        const start = Number(match[1]);
-        const end = match[2] ? Math.min(Number(match[2]), total - 1) : total - 1;
-        if (start < total && start <= end) {
+        let start;
+        let end;
+        if (match[1] === "") {
+          start = Math.max(0, total - Number(match[2]));
+          end = total - 1;
+        } else {
+          start = Number(match[1]);
+          end =
+            match[2] === "" ? total - 1 : Math.min(Number(match[2]), total - 1);
+        }
+        if (start >= total) {
+          return new Response(null, {
+            status: 416,
+            statusText: "Range Not Satisfiable",
+            headers: {
+              "Content-Range": "bytes */" + total,
+              "Accept-Ranges": "bytes",
+            },
+          });
+        }
+        if (start <= end) {
           const body = buffer.slice(start, end + 1);
           return new Response(body, {
             status: 206,

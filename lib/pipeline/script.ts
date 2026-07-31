@@ -31,7 +31,10 @@ Rules:
 - Close with the HOST summarizing the single biggest takeaway and signing off.
 - Total dialogue length must stay under ${MAX_SCRIPT_CHARS} characters (roughly 6-8 spoken minutes).`;
 
+let scriptFellBack = false;
+
 export function scriptProviderName(): string {
+  if (scriptFellBack) return "mock (gateway unavailable)";
   return hasScriptCredentials()
     ? (process.env.PODCAST_SCRIPT_MODEL ?? "anthropic/claude-sonnet-5")
     : "mock";
@@ -54,14 +57,25 @@ export async function generatePodcastScript(
     return mockScript(text, sourceFilename);
   }
 
-  const { generateText, Output } = await import("ai");
-  const { output } = await generateText({
-    model: scriptProviderName(),
-    system: SYSTEM_PROMPT,
-    output: Output.object({ schema: scriptSchema }),
-    prompt: `Turn the following document ("${sourceFilename}") into a podcast script.\n\n<document>\n${text}\n</document>`,
-  });
-  return output as PodcastScript;
+  try {
+    const { generateText, Output } = await import("ai");
+    const { output } = await generateText({
+      model: scriptProviderName(),
+      system: SYSTEM_PROMPT,
+      output: Output.object({ schema: scriptSchema }),
+      prompt: `Turn the following document ("${sourceFilename}") into a podcast script.\n\n<document>\n${text}\n</document>`,
+    });
+    return output as PodcastScript;
+  } catch (err) {
+    // Gateway not set up (no billing, expired OIDC, …) shouldn't kill the
+    // episode; fall back to the deterministic script and say so in providers.
+    console.error(
+      "Script generation via AI Gateway failed, falling back to mock:",
+      err instanceof Error ? err.message : err,
+    );
+    scriptFellBack = true;
+    return mockScript(text, sourceFilename);
+  }
 }
 
 function mockScript(text: string, sourceFilename: string): PodcastScript {

@@ -117,6 +117,13 @@ export default function Player({ episode, onClose }: PlayerProps) {
       for (const action of HANDLED_ACTIONS) {
         session.setActionHandler(action, null);
       }
+      try {
+        // Calling with no arguments clears the lock-screen position UI;
+        // not all browsers implement it.
+        session.setPositionState?.();
+      } catch {
+        // Ignore: unsupported or partial implementations may throw.
+      }
       session.playbackState = "none";
     };
   }, [seekTo]);
