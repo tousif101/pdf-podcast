@@ -53,20 +53,14 @@ The research's top two complaints are both "no control." Attacked with per-episo
 
 ---
 
-## ✍️ Phase 3 — Trust *(complaints #3, #4, #5 + requested feature #3 · ~2 days)*
+## ✍️ Phase 3 — Trust *(complaints #3, #4, #5 + requested feature #3)*
 
-The "editable script before audio" differentiator that Descript/Jellypod advertise on desktop and **nobody offers on mobile web** — plus grounding to attack the hallucination trust problem.
+The "editable script before audio" differentiator that Descript/Jellypod advertise on desktop and **nobody offers on mobile web**.
 
-- [ ] **Review-script-then-generate** — split the workflow at the script boundary using a **Workflow DevKit hook** (this is exactly what `createHook`/`resumeHook` exist for — the workflow suspends free of charge until the user acts):
-  1. Script step completes → status `script_ready` → workflow suspends on `createHook({token: "approve:" + episodeId})`.
-  2. UI shows the editable script (textarea per line, add/delete/reorder, change speaker).
-  3. "Generate audio" → `PATCH /api/episodes/[id]/script` saves edits → `resumeHook(token)` → synthesis continues.
-  4. "Auto mode" toggle at upload skips the pause for one-tap users (resolves the hook immediately).
-- [ ] **Regenerate one segment** — per-line "redo" on the script screen re-prompts just that line with context (cheap: one small LLM call).
-- [ ] **Grounding check (conversation mode)** — after script generation, a second cheap LLM pass scores each line against the source text; lines scoring "not supported" get a ⚠️ marker in the transcript and script editor. Counters complaint #4 without blocking generation.
-- [ ] **Tap-to-source citations** — requested feature #10 / named market gap. During extraction, store per-page char offsets; the script pass tags each line with its supporting page; transcript lines link to a source viewer showing the page excerpt. (Read-aloud gets this nearly free — chunk order *is* document order.)
-
-**Exit test:** upload a PDF, delete the script's cold-open banter, fix one wrong claim, regenerate a single line, then generate audio — and the final transcript shows page citations.
+- [x] **Review-script-then-generate** ✅ SHIPPED 2026-07-31 — opt-in "Review & edit script" toggle pauses the workflow after scripting via a Workflow DevKit `createHook` (free suspend); status `script_ready`; the ScriptEditor UI (edit/add/delete/reorder/retitle) submits to `PATCH /api/episodes/[id]/script`, which validates, saves, and `resumeHook`s to continue synthesis. synthesizeStep reads the edited script from the DB. Hardened after a fresh security review: edits are capped to the **original generated script size** (not the tier budget) so a 1-credit episode can't be inflated; an **atomic `patchIf(status)`** claims the review so concurrent PATCHes can't double-resume. All verified in production (oversized→400, valid→200, double→409). 70 unit + 3 integration tests.
+- [ ] **Regenerate one segment** — per-line "redo" re-prompts just that line (one small LLM call). *(follow-up)*
+- [ ] **Grounding check (conversation mode)** — a cheap LLM pass flags lines not supported by the source with a ⚠️ marker. *(follow-up)*
+- [ ] **Tap-to-source citations** — store per-page char offsets; tag each line with its supporting page; transcript links to a source viewer. *(follow-up)*
 
 ---
 
