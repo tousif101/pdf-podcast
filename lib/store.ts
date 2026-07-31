@@ -15,8 +15,13 @@ function assertId(id: string): void {
   }
 }
 
+export interface ListFilter {
+  userId: string;
+  includeUnowned?: boolean;
+}
+
 export interface EpisodeStore {
-  list(): Promise<Episode[]>;
+  list(filter?: ListFilter): Promise<Episode[]>;
   get(id: string): Promise<Episode | null>;
   create(episode: Episode): Promise<void>;
   /** Updates only the given fields. Returns null if the episode no longer exists. */
@@ -43,7 +48,7 @@ const AUDIO_EXT: Record<string, string> = {
 // Metadata drivers
 
 interface MetaDriver {
-  list(): Promise<Episode[]>;
+  list(filter?: ListFilter): Promise<Episode[]>;
   get(id: string): Promise<Episode | null>;
   create(episode: Episode): Promise<void>;
   patch(id: string, fields: Partial<Episode>): Promise<Episode | null>;
@@ -65,7 +70,7 @@ class FsMeta implements MetaDriver {
     await fs.rename(tmp, target);
   }
 
-  async list(): Promise<Episode[]> {
+  async list(filter?: ListFilter): Promise<Episode[]> {
     await fs.mkdir(this.dir, { recursive: true });
     const files = await fs.readdir(this.dir);
     const episodes: Episode[] = [];
@@ -79,7 +84,14 @@ class FsMeta implements MetaDriver {
         // skip torn/corrupt entries rather than failing the whole listing
       }
     }
-    return episodes.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    const visible = filter
+      ? episodes.filter(
+          (e) =>
+            e.userId === filter.userId ||
+            (filter.includeUnowned && e.userId === undefined),
+        )
+      : episodes;
+    return visible.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
 
   async get(id: string): Promise<Episode | null> {
@@ -109,6 +121,7 @@ class FsMeta implements MetaDriver {
 
 type EpisodeRow = {
   id: string;
+  user_id: string | null;
   title: string;
   source_filename: string;
   mode: Episode["mode"];
@@ -127,6 +140,7 @@ type EpisodeRow = {
 function rowToEpisode(row: EpisodeRow): Episode {
   return {
     id: row.id,
+    userId: row.user_id ?? undefined,
     title: row.title,
     sourceFilename: row.source_filename,
     mode: row.mode ?? "conversation",
@@ -146,6 +160,7 @@ function rowToEpisode(row: EpisodeRow): Episode {
 function episodeToRow(fields: Partial<Episode>): Partial<EpisodeRow> {
   const row: Partial<EpisodeRow> = {};
   if (fields.id !== undefined) row.id = fields.id;
+  if (fields.userId !== undefined) row.user_id = fields.userId;
   if (fields.title !== undefined) row.title = fields.title;
   if (fields.sourceFilename !== undefined)
     row.source_filename = fields.sourceFilename;
@@ -185,12 +200,18 @@ class SupabaseMeta implements MetaDriver {
     return this.clientPromise;
   }
 
-  async list(): Promise<Episode[]> {
+  async list(filter?: ListFilter): Promise<Episode[]> {
     const supabase = await this.client();
-    const { data, error } = await supabase
+    let query = supabase
       .from("episodes")
       .select("*")
       .order("created_at", { ascending: false });
+    if (filter) {
+      query = filter.includeUnowned
+        ? query.or(`user_id.eq.${filter.userId},user_id.is.null`)
+        : query.eq("user_id", filter.userId);
+    }
+    const { data, error } = await query;
     if (error) throw new Error(`episodes list failed: ${error.message}`);
     return (data as EpisodeRow[]).map(rowToEpisode);
   }
@@ -370,8 +391,8 @@ class CompositeStore implements EpisodeStore {
     private binary: BinaryDriver,
   ) {}
 
-  list() {
-    return this.meta.list();
+  list(filter?: ListFilter) {
+    return this.meta.list(filter);
   }
 
   get(id: string) {

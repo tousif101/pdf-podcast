@@ -23,6 +23,8 @@ export interface PodcastScript {
 
 export interface Episode {
   id: string;
+  /** Owner; undefined only on legacy pre-auth episodes. */
+  userId?: string;
   title: string;
   sourceFilename: string;
   mode?: EpisodeMode;

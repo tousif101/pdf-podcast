@@ -10,7 +10,12 @@ import Player from "./Player";
 const POLL_INTERVAL_MS = 2500;
 const RECENT_EPISODE_WINDOW_MS = 2 * 60 * 1000;
 
-export default function PodcastApp() {
+interface PodcastAppProps {
+  userEmail: string;
+  onSignOut: () => void;
+}
+
+export default function PodcastApp({ userEmail, onSignOut }: PodcastAppProps) {
   const [episodes, setEpisodes] = useState<Episode[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -162,14 +167,19 @@ export default function PodcastApp() {
               <path d="M5 10v4m3.5-7v10M12 8v8m3.5-11v14M19 10v4" />
             </svg>
           </span>
-          <div>
+          <div className="min-w-0 flex-1">
             <h1 className="text-lg font-semibold tracking-tight text-zinc-50">
               PDF Podcast
             </h1>
-            <p className="text-xs text-zinc-400">
-              Turn any PDF into an episode
-            </p>
+            <p className="truncate text-xs text-zinc-400">{userEmail}</p>
           </div>
+          <button
+            type="button"
+            onClick={onSignOut}
+            className="shrink-0 rounded-lg border border-zinc-800 px-3 py-1.5 text-xs text-zinc-400 hover:border-zinc-600 hover:text-zinc-200"
+          >
+            Sign out
+          </button>
         </div>
       </header>
 

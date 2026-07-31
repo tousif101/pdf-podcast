@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { start } from "workflow/api";
 import { getStore } from "@/lib/store";
+import { getSessionUser } from "@/lib/auth";
 import { generateEpisode } from "@/workflows/generate-episode";
 import type { Episode } from "@/lib/types";
 
@@ -9,11 +10,22 @@ import type { Episode } from "@/lib/types";
 const MAX_PDF_BYTES = 4 * 1024 * 1024;
 
 export async function GET() {
-  const episodes = await getStore().list();
+  const user = await getSessionUser();
+  if (!user) {
+    return NextResponse.json({ error: "Sign in required" }, { status: 401 });
+  }
+  const episodes = await getStore().list({
+    userId: user.id,
+    includeUnowned: user.isAdmin,
+  });
   return NextResponse.json({ episodes });
 }
 
 export async function POST(request: Request) {
+  const user = await getSessionUser();
+  if (!user) {
+    return NextResponse.json({ error: "Sign in required" }, { status: 401 });
+  }
   const form = await request.formData();
   const file = form.get("file");
   if (!(file instanceof File)) {
@@ -48,6 +60,7 @@ export async function POST(request: Request) {
   const store = getStore();
   const episode: Episode = {
     id: crypto.randomUUID(),
+    userId: user.id,
     title: file.name.replace(/\.pdf$/i, "").replace(/[-_]+/g, " "),
     sourceFilename: file.name,
     mode,

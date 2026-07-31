@@ -1,5 +1,5 @@
-import PodcastApp from "@/components/PodcastApp";
+import AuthGate from "@/components/AuthGate";
 
 export default function Home() {
-  return <PodcastApp />;
+  return <AuthGate />;
 }
