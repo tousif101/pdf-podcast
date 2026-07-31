@@ -1,8 +1,9 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #0a0a0a;
+  --foreground: #ededed;
+  color-scheme: dark;
 }
 
 @theme inline {
@@ -12,15 +13,56 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+input[type="range"].seek-slider {
+  appearance: none;
+  height: 20px;
+  background: transparent;
+  cursor: pointer;
+}
+
+input[type="range"].seek-slider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 9999px;
+  background: linear-gradient(
+    to right,
+    #8b5cf6 var(--seek-progress, 0%),
+    #3f3f46 var(--seek-progress, 0%)
+  );
+}
+
+input[type="range"].seek-slider::-webkit-slider-thumb {
+  appearance: none;
+  margin-top: -5px;
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  background: #ede9fe;
+  border: none;
+}
+
+input[type="range"].seek-slider::-moz-range-track {
+  height: 4px;
+  border-radius: 9999px;
+  background: #3f3f46;
+}
+
+input[type="range"].seek-slider::-moz-range-progress {
+  height: 4px;
+  border-radius: 9999px;
+  background: #8b5cf6;
+}
+
+input[type="range"].seek-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  background: #ede9fe;
+  border: none;
 }

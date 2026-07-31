@@ -1,36 +1,76 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# PDF Podcast
 
-## Getting Started
+Turn any PDF into a two-host podcast episode you can listen to on your commute. Built as an installable PWA (Next.js on Vercel) with reliable background / lock-screen playback on Android Chrome.
 
-First, run the development server:
+## How it works
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+```
+upload PDF ──> durable workflow (Workflow DevKit)
+                 1. extract text        (unpdf)
+                 2. write dialogue      (Claude via Vercel AI Gateway)
+                 3. synthesize speech   (Gemini 2.5 Flash TTS, multi-speaker)
+                 4. store episode       (filesystem locally / Vercel Blob in prod)
+client polls /api/episodes ──> <audio> player + Media Session API + offline cache
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Each stage is a `"use step"` function inside a `"use workflow"` orchestrator (`workflows/generate-episode.ts`), so generation survives serverless timeouts, retries transient failures, and can be inspected with `npx workflow web`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+**Zero-config mock mode:** with no API keys set, the script stage derives a deterministic dialogue from the PDF text and the TTS stage synthesizes speech-paced tones — the entire pipeline, player, and PWA work end-to-end locally. Real providers activate automatically when keys are present (see `.env.example`).
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Run it
 
-## Learn More
+```bash
+npm install
+npm run dev          # mock mode works immediately
+```
 
-To learn more about Next.js, take a look at the following resources:
+Upload a PDF (a fixture lives at `test/fixtures/history-of-coffee.pdf`, regenerate with `node scripts/make-test-pdf.mjs`), watch it move through extracting → scripting → synthesizing → ready, then play it.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Real providers
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+cp .env.example .env.local
+# Script (Claude): either `vercel link && vercel env pull .env.local` (OIDC, preferred)
+#   or set AI_GATEWAY_API_KEY
+# TTS (Gemini multi-speaker): set GEMINI_API_KEY (https://aistudio.google.com/apikey)
+```
 
-## Deploy on Vercel
+Providers sit behind interfaces (`lib/pipeline/script.ts`, `lib/pipeline/tts.ts`), so swapping ElevenLabs/OpenAI in later means changing one module.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Deploy to Vercel
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+vercel link
+vercel env pull .env.local          # provisions OIDC for the AI Gateway locally
+# add a Blob store to the project in the Vercel dashboard (Storage tab)
+# add GEMINI_API_KEY: echo "<key>" | vercel env add GEMINI_API_KEY production
+vercel deploy --prod
+```
+
+`BLOB_READ_WRITE_TOKEN` (auto-provisioned by the Blob store) switches storage from the local filesystem to Vercel Blob. Workflow DevKit needs no extra config on Vercel.
+
+## Install on your phone (Android Chrome)
+
+1. Open the deployed URL in Chrome → menu → **Add to Home screen** (installs the PWA).
+2. Set Chrome's battery usage to **Unrestricted** (Settings → Apps → Chrome → App battery usage) so OEM battery optimization can't kill screen-off playback.
+3. Tap **Download** on an episode to cache its audio in the service worker for offline listening.
+
+Playback uses a real `<audio>` element (required for Android audio focus — the Web Audio API doesn't request it) plus the Media Session API for lock-screen metadata, play/pause, and ±15s controls. The service worker (`public/sw.js`) serves cached audio with proper `Range`/206 responses so seeking works offline.
+
+Note: iOS Safari does not support background PWA audio; this app targets Android Chrome.
+
+## API
+
+| Route | Method | Purpose |
+|---|---|---|
+| `/api/episodes` | POST (multipart `file`) | Upload PDF, returns `202 {id}`, starts workflow |
+| `/api/episodes` | GET | List episodes |
+| `/api/episodes/[id]` | GET / DELETE | Episode status + metadata / remove |
+| `/api/episodes/[id]/audio` | GET | Stream audio (Range supported; 302 to Blob in prod) |
+
+## Notes & known limits
+
+- Scanned/image-only PDFs fail with a clear error (no OCR fallback yet).
+- Gemini 2.5 TTS is still labeled Preview by Google; the model is overridable via `PODCAST_TTS_MODEL`. Audio is stored as WAV (24 kHz mono, ~2.9 MB/min).
+- Episode metadata and audio in Blob storage are public-but-unguessable URLs — fine for personal use, add auth before sharing the deployment.
+- Scripts are capped at ~4,500 characters (≈6–8 spoken minutes) to fit a single TTS call.
