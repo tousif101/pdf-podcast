@@ -49,16 +49,24 @@ describe("script review flow", () => {
     const run = await start(generateEpisode, [id, true]);
 
     // Workflow suspends at the approval hook.
-    await waitForHook(run, { token: `approve:${id}` });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await waitForHook(run as any, { token: `approve:${id}` });
     const paused = await getStore().get(id);
     expect(paused?.status).toBe("script_ready");
     expect(paused?.script?.lines.length).toBeGreaterThan(0);
 
-    // Simulate the user editing the script (what the PATCH route persists).
-    await getStore().patch(id, {
+    // Simulate the PATCH route: atomically claim the review, then resume.
+    const claimed = await getStore().patchIf(id, "script_ready", {
+      status: "synthesizing",
       title: "Edited Title",
       script: { title: "Edited Title", lines: [{ speaker: "HOST", text: "Just this one line." }] },
     });
+    expect(claimed).not.toBeNull();
+    // A second claim must fail (double-resume protection).
+    const second = await getStore().patchIf(id, "script_ready", {
+      status: "synthesizing",
+    });
+    expect(second).toBeNull();
     await resumeHook(`approve:${id}`, { ok: true });
     await run.returnValue;
 

@@ -83,8 +83,13 @@ test("reading credit cost scales with length cap, not raw document size", () => 
   // short caps at 30k chars => 2 credits; deep caps at 200k => 8 (max)
   assert.equal(creditCost("reading", huge, "short"), 2);
   assert.equal(creditCost("reading", huge, "deep"), 8);
-  // conversation is always 1 credit regardless of length
-  assert.equal(creditCost("conversation", huge, "deep"), 1);
+});
+
+test("conversation credit cost scales with the length tier", () => {
+  // short (2k) and standard (4.5k) round to 1; deep (9k) is 2x standard => 2.
+  assert.equal(creditCost("conversation", 999, "short"), 1);
+  assert.equal(creditCost("conversation", 999, "standard"), 1);
+  assert.equal(creditCost("conversation", 999, "deep"), 2);
 });
 
 test("estimateMinutes reflects the length preset for conversations", () => {

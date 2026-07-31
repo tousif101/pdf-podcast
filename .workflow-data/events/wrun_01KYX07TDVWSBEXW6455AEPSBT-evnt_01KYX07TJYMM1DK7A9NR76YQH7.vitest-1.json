@@ -1,0 +1,11 @@
+{
+  "eventType": "step_started",
+  "specVersion": 3,
+  "correlationId": "step_01KYX07TE39JFKJTK8YTBNA9AR",
+  "eventData": {
+    "stepName": "step//./workflows/generate-episode//extractStep"
+  },
+  "runId": "wrun_01KYX07TDVWSBEXW6455AEPSBT",
+  "eventId": "evnt_01KYX07TJYMM1DK7A9NR76YQH7",
+  "createdAt": "2026-07-31T21:10:46.622Z"
+}

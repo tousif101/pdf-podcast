@@ -62,12 +62,21 @@ export interface ScriptValidation {
   script?: PodcastScript;
 }
 
-// Validates a user-edited script and caps total length to the tier the user
-// already paid for, so editing can't inflate TTS cost beyond the quote.
+export function scriptChars(script: PodcastScript): number {
+  return script.lines.reduce((n, l) => n + l.text.trim().length, 0);
+}
+
+/** How much a user may grow an edited script over the original they paid for:
+ *  10% proportional headroom plus a small absolute allowance for a short add. */
+export function editCharBudget(originalChars: number): number {
+  return Math.round(originalChars * 1.1) + 200;
+}
+
+// Validates a user-edited script and caps total length so editing can't
+// inflate TTS cost beyond the script the user already paid to generate.
 export function validateEditedScript(
   input: unknown,
-  mode: EpisodeMode,
-  length: EpisodeLength,
+  maxChars: number,
 ): ScriptValidation {
   const raw = input as { title?: unknown; lines?: unknown } | null;
   if (!raw || !Array.isArray(raw.lines)) {
@@ -100,15 +109,10 @@ export function validateEditedScript(
   if (lines.length === 0) {
     return { ok: false, error: "Script cannot be empty" };
   }
-  const budget = Math.round(
-    (mode === "reading"
-      ? LENGTH_BUDGETS[length].readChars
-      : LENGTH_BUDGETS[length].scriptChars) * 1.25,
-  );
-  if (total > budget) {
+  if (total > maxChars) {
     return {
       ok: false,
-      error: `Edited script is too long for the ${length} length you chose`,
+      error: "Edited script is longer than the version you generated",
     };
   }
   const title =

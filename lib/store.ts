@@ -1,6 +1,6 @@
 import { promises as fs } from "fs";
 import path from "path";
-import type { Episode } from "./types";
+import type { Episode, EpisodeStatus } from "./types";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -26,6 +26,14 @@ export interface EpisodeStore {
   create(episode: Episode): Promise<void>;
   /** Updates only the given fields. Returns null if the episode no longer exists. */
   patch(id: string, fields: Partial<Episode>): Promise<Episode | null>;
+  /** Atomic conditional update: applies fields only if current status matches
+   *  expectedStatus. Returns the updated episode, or null if no row matched
+   *  (missing or wrong status) — the caller uses null to reject races. */
+  patchIf(
+    id: string,
+    expectedStatus: EpisodeStatus,
+    fields: Partial<Episode>,
+  ): Promise<Episode | null>;
   delete(id: string): Promise<void>;
   saveSource(id: string, data: Uint8Array): Promise<void>;
   getSource(id: string): Promise<Uint8Array | null>;
@@ -47,6 +55,11 @@ interface MetaDriver {
   get(id: string): Promise<Episode | null>;
   create(episode: Episode): Promise<void>;
   patch(id: string, fields: Partial<Episode>): Promise<Episode | null>;
+  patchIf(
+    id: string,
+    expectedStatus: EpisodeStatus,
+    fields: Partial<Episode>,
+  ): Promise<Episode | null>;
   delete(id: string): Promise<void>;
 }
 
@@ -104,6 +117,18 @@ class FsMeta implements MetaDriver {
   async patch(id: string, fields: Partial<Episode>): Promise<Episode | null> {
     const existing = await this.get(id);
     if (!existing) return null;
+    const updated = { ...existing, ...fields, id };
+    await this.write(updated);
+    return updated;
+  }
+
+  async patchIf(
+    id: string,
+    expectedStatus: EpisodeStatus,
+    fields: Partial<Episode>,
+  ): Promise<Episode | null> {
+    const existing = await this.get(id);
+    if (!existing || existing.status !== expectedStatus) return null;
     const updated = { ...existing, ...fields, id };
     await this.write(updated);
     return updated;
@@ -239,6 +264,25 @@ class SupabaseMeta implements MetaDriver {
       .select()
       .maybeSingle();
     if (error) throw new Error(`episode patch failed: ${error.message}`);
+    return data ? rowToEpisode(data as EpisodeRow) : null;
+  }
+
+  async patchIf(
+    id: string,
+    expectedStatus: EpisodeStatus,
+    fields: Partial<Episode>,
+  ): Promise<Episode | null> {
+    const supabase = await this.client();
+    // Atomic compare-and-set: the status predicate makes concurrent PATCHes
+    // race for the single row that still matches expectedStatus.
+    const { data, error } = await supabase
+      .from("episodes")
+      .update(episodeToRow(fields))
+      .eq("id", id)
+      .eq("status", expectedStatus)
+      .select()
+      .maybeSingle();
+    if (error) throw new Error(`episode patchIf failed: ${error.message}`);
     return data ? rowToEpisode(data as EpisodeRow) : null;
   }
 
@@ -469,6 +513,11 @@ class CompositeStore implements EpisodeStore {
   patch(id: string, fields: Partial<Episode>) {
     assertId(id);
     return this.meta.patch(id, fields);
+  }
+
+  patchIf(id: string, expectedStatus: EpisodeStatus, fields: Partial<Episode>) {
+    assertId(id);
+    return this.meta.patchIf(id, expectedStatus, fields);
   }
 
   async delete(id: string) {

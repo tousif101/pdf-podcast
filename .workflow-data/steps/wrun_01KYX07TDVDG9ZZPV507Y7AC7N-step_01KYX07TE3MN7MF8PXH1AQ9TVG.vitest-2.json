@@ -1,0 +1,20 @@
+{
+  "runId": "wrun_01KYX07TDVDG9ZZPV507Y7AC7N",
+  "stepId": "step_01KYX07TE3MN7MF8PXH1AQ9TVG",
+  "stepName": "step//./workflows/generate-episode//markScriptReady",
+  "status": "completed",
+  "input": {
+    "__type": "Uint8Array",
+    "data": "ZGV2bFt7ImFyZ3MiOjEsImNsb3N1cmVWYXJzIjotMSwidGhpc1ZhbCI6LTF9LFsyXSwiMzMzMzMzMzMtMzMzMy00MzMzLTgzMzMtMzMzMzMzMzMzMzMzIl0="
+  },
+  "attempt": 1,
+  "startedAt": "2026-07-31T21:10:46.908Z",
+  "createdAt": "2026-07-31T21:10:46.850Z",
+  "updatedAt": "2026-07-31T21:10:46.912Z",
+  "specVersion": 3,
+  "output": {
+    "__type": "Uint8Array",
+    "data": "ZGV2bC0x"
+  },
+  "completedAt": "2026-07-31T21:10:46.912Z"
+}

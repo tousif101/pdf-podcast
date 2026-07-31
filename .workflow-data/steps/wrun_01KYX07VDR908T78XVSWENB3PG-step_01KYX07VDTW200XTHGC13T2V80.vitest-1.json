@@ -1,0 +1,20 @@
+{
+  "runId": "wrun_01KYX07VDR908T78XVSWENB3PG",
+  "stepId": "step_01KYX07VDTW200XTHGC13T2V80",
+  "stepName": "step//./workflows/generate-episode//extractStep",
+  "status": "failed",
+  "input": {
+    "__type": "Uint8Array",
+    "data": "ZGV2bFt7ImFyZ3MiOjEsImNsb3N1cmVWYXJzIjotMSwidGhpc1ZhbCI6LTF9LFsyXSwiMjIyMjIyMjItMjIyMi00MjIyLTgyMjItMjIyMjIyMjIyMjIyIl0="
+  },
+  "attempt": 1,
+  "startedAt": "2026-07-31T21:10:47.625Z",
+  "createdAt": "2026-07-31T21:10:47.569Z",
+  "updatedAt": "2026-07-31T21:10:47.628Z",
+  "specVersion": 3,
+  "error": {
+    "message": "Source PDF is missing",
+    "stack": "FatalError: Source PDF is missing\n    at extractStep (file:///Users/tousifchowdhury/Documents/projects/pdf-podcast/.workflow-vitest/steps.mjs:1341:22)\n    at file:///Users/tousifchowdhury/Documents/projects/pdf-podcast/node_modules/@workflow/core/dist/runtime/step-handler.js:379:28\n    at trace (file:///Users/tousifchowdhury/Documents/projects/pdf-podcast/node_modules/@workflow/core/dist/telemetry.js:75:16)\n    at file:///Users/tousifchowdhury/Documents/projects/pdf-podcast/node_modules/@workflow/core/dist/runtime/step-handler.js:378:26\n    at trace (file:///Users/tousifchowdhury/Documents/projects/pdf-podcast/node_modules/@workflow/core/dist/telemetry.js:75:16)\n    at file:///Users/tousifchowdhury/Documents/projects/pdf-podcast/node_modules/@workflow/core/dist/runtime/step-handler.js:87:12\n    at file:///Users/tousifchowdhury/Documents/projects/pdf-podcast/node_modules/@workflow/vitest/node_modules/@workflow/world-local/dist/queue.js:252:32\n    at file:///Users/tousifchowdhury/Documents/projects/pdf-podcast/node_modules/@workflow/core/dist/runtime/helpers.js:520:16\n    at file:///Users/tousifchowdhury/Documents/projects/pdf-podcast/node_modules/@workflow/vitest/node_modules/@workflow/world-local/dist/queue.js:145:36"
+  },
+  "completedAt": "2026-07-31T21:10:47.628Z"
+}

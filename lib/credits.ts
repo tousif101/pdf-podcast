@@ -14,6 +14,10 @@ function readableChars(extractedChars: number, length: EpisodeLength): number {
   return Math.min(Math.max(0, extractedChars), LENGTH_BUDGETS[length].readChars);
 }
 
+// A conversation's spoken length is set by its tier budget; ~1 credit per
+// standard-episode's worth of dialogue, so deep (2x) costs 2.
+const CONVERSATION_CHARS_PER_CREDIT = LENGTH_BUDGETS.standard.scriptChars;
+
 export function creditCost(
   mode: EpisodeMode,
   extractedChars: number,
@@ -26,7 +30,13 @@ export function creditCost(
       Math.max(1, Math.ceil(chars / READ_CHARS_PER_CREDIT)),
     );
   }
-  return 1;
+  return Math.min(
+    MAX_CREDITS_PER_EPISODE,
+    Math.max(
+      1,
+      Math.ceil(LENGTH_BUDGETS[length].scriptChars / CONVERSATION_CHARS_PER_CREDIT),
+    ),
+  );
 }
 
 export function estimateMinutes(
