@@ -4,10 +4,17 @@ import type { EpisodeMode } from "./types";
 // 1 credit ≈ 25 minutes of read-aloud audio; conversations are a fixed-length
 // summary regardless of input size.
 const READ_CHARS_PER_CREDIT = 25_000;
+// Read-aloud is capped at ~100k chars upstream, so cost tops out well under
+// this; the cap guards against any extraction anomaly inflating the charge.
+const MAX_CREDITS_PER_EPISODE = 8;
 
 export function creditCost(mode: EpisodeMode, extractedChars: number): number {
   if (mode === "reading") {
-    return Math.max(1, Math.ceil(extractedChars / READ_CHARS_PER_CREDIT));
+    const chars = Math.max(0, extractedChars);
+    return Math.min(
+      MAX_CREDITS_PER_EPISODE,
+      Math.max(1, Math.ceil(chars / READ_CHARS_PER_CREDIT)),
+    );
   }
   return 1;
 }

@@ -1,0 +1,14 @@
+{
+  "eventType": "run_failed",
+  "specVersion": 3,
+  "eventData": {
+    "error": {
+      "message": "Source PDF is missing",
+      "stack": "FatalError: Source PDF is missing\n    at extractStep (file:///Users/tousifchowdhury/Documents/projects/pdf-podcast/.workflow-vitest/steps.mjs:961:22)\n    at file:///Users/tousifchowdhury/Documents/projects/pdf-podcast/node_modules/@workflow/core/dist/runtime/step-handler.js:379:28\n    at trace (file:///Users/tousifchowdhury/Documents/projects/pdf-podcast/node_modules/@workflow/core/dist/telemetry.js:75:16)\n    at file:///Users/tousifchowdhury/Documents/projects/pdf-podcast/node_modules/@workflow/core/dist/runtime/step-handler.js:378:26\n    at trace (file:///Users/tousifchowdhury/Documents/projects/pdf-podcast/node_modules/@workflow/core/dist/telemetry.js:75:16)\n    at file:///Users/tousifchowdhury/Documents/projects/pdf-podcast/node_modules/@workflow/core/dist/runtime/step-handler.js:87:12\n    at file:///Users/tousifchowdhury/Documents/projects/pdf-podcast/node_modules/@workflow/vitest/node_modules/@workflow/world-local/dist/queue.js:252:32\n    at file:///Users/tousifchowdhury/Documents/projects/pdf-podcast/node_modules/@workflow/core/dist/runtime/helpers.js:520:16\n    at file:///Users/tousifchowdhury/Documents/projects/pdf-podcast/node_modules/@workflow/vitest/node_modules/@workflow/world-local/dist/queue.js:145:36"
+    },
+    "errorCode": "USER_ERROR"
+  },
+  "runId": "wrun_01KYWQTVH9HSWV79XJ0A6TETPK",
+  "eventId": "evnt_01KYWQTVVE9M4YDCW3M45M7M4X",
+  "createdAt": "2026-07-31T18:43:53.326Z"
+}

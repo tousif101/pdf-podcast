@@ -3,13 +3,17 @@ import { start } from "workflow/api";
 import { getStore } from "@/lib/store";
 import { getSessionUser } from "@/lib/auth";
 import { creditCost, getBalance, refundEpisode, spendCredits } from "@/lib/credits";
-import { extractPdfText } from "@/lib/pipeline/extract";
+import {
+  extractPdfText,
+  looksLikePdf,
+  validatePdfFile,
+} from "@/lib/pipeline/extract";
+import { ACTIVE_STATUSES } from "@/components/format";
 import { generateEpisode } from "@/workflows/generate-episode";
 import type { Episode } from "@/lib/types";
 
-// Vercel functions reject request bodies over ~4.5 MB before the handler runs,
-// so advertising a bigger limit would produce opaque platform 413s.
-const MAX_PDF_BYTES = 4 * 1024 * 1024;
+// One user can't monopolize the generation queue.
+const MAX_CONCURRENT_GENERATIONS = 3;
 
 export async function GET() {
   const user = await getSessionUser();
@@ -29,27 +33,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Sign in required" }, { status: 401 });
   }
   const form = await request.formData();
-  const file = form.get("file");
-  if (!(file instanceof File)) {
-    return NextResponse.json(
-      { error: "Upload a PDF in the 'file' field" },
-      { status: 400 },
-    );
+  const check = validatePdfFile(form.get("file"));
+  if (!check.ok) {
+    return NextResponse.json({ error: check.error }, { status: check.status });
   }
-  if (file.size > MAX_PDF_BYTES) {
-    return NextResponse.json(
-      { error: "PDF is too large (4 MB max)" },
-      { status: 413 },
-    );
-  }
+  const file = check.file;
   const data = new Uint8Array(await file.arrayBuffer());
-  const isPdf =
-    data.length > 4 &&
-    data[0] === 0x25 &&
-    data[1] === 0x50 &&
-    data[2] === 0x44 &&
-    data[3] === 0x46;
-  if (!isPdf && !file.name.toLowerCase().endsWith(".pdf")) {
+  if (!looksLikePdf(data, file.name)) {
     return NextResponse.json(
       { error: "Only PDF files are supported" },
       { status: 415 },
@@ -59,15 +49,27 @@ export async function POST(request: Request) {
   const modeField = form.get("mode");
   const mode = modeField === "reading" ? "reading" : "conversation";
 
+  const store = getStore();
+  if (!user.isAdmin) {
+    const mine = await store.list({ userId: user.id });
+    const active = mine.filter((e) => ACTIVE_STATUSES.includes(e.status)).length;
+    if (active >= MAX_CONCURRENT_GENERATIONS) {
+      return NextResponse.json(
+        { error: "You already have episodes generating. Please wait." },
+        { status: 429 },
+      );
+    }
+  }
+
   let extractedChars: number;
   try {
     // PDF.js transfers (detaches) the buffer it's given — extract from a copy
     // so `data` stays usable for saveSource below.
     const { text } = await extractPdfText(new Uint8Array(data));
     extractedChars = text.length;
-  } catch (err) {
+  } catch {
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Could not read this PDF" },
+      { error: "Could not read this PDF. It may be scanned or corrupted." },
       { status: 422 },
     );
   }
@@ -85,7 +87,6 @@ export async function POST(request: Request) {
     }
   }
 
-  const store = getStore();
   const episode: Episode = {
     id: episodeId,
     userId: user.id,

@@ -1,0 +1,16 @@
+{
+  "eventType": "step_completed",
+  "specVersion": 3,
+  "correlationId": "step_01KYWQTVHB9NW9836QGKEMC11S",
+  "eventData": {
+    "stepName": "step//./workflows/generate-episode//failStep",
+    "workflowName": "workflow//./workflows/generate-episode//generateEpisode",
+    "result": {
+      "__type": "Uint8Array",
+      "data": "ZGV2bC0x"
+    }
+  },
+  "runId": "wrun_01KYWQTVH9HSWV79XJ0A6TETPK",
+  "eventId": "evnt_01KYWQTVSKVSXS9T9D211AFM9Q",
+  "createdAt": "2026-07-31T18:43:53.267Z"
+}

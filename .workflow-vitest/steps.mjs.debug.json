@@ -1,0 +1,13 @@
+{
+  "stepFiles": [
+    "/Users/tousifchowdhury/Documents/projects/pdf-podcast/node_modules/workflow/dist/stdlib.js",
+    "/Users/tousifchowdhury/Documents/projects/pdf-podcast/workflows/generate-episode.ts"
+  ],
+  "workflowFiles": [
+    "/Users/tousifchowdhury/Documents/projects/pdf-podcast/workflows/generate-episode.ts"
+  ],
+  "serdeOnlyFiles": [
+    "/Users/tousifchowdhury/Documents/projects/pdf-podcast/node_modules/@workflow/builders/dist/serde-checker.js",
+    "/Users/tousifchowdhury/Documents/projects/pdf-podcast/node_modules/@workflow/vitest/node_modules/@workflow/builders/dist/serde-checker.js"
+  ]
+}
