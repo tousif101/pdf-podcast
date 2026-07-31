@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import SignIn from "./SignIn";
+import Landing from "./Landing";
 import PodcastApp from "./PodcastApp";
 
 export default function AuthGate() {
@@ -39,7 +39,7 @@ export default function AuthGate() {
   }
 
   if (state.status === "out") {
-    return <SignIn />;
+    return <Landing />;
   }
 
   return (
