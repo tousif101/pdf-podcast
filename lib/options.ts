@@ -1,9 +1,11 @@
 import type {
+  DialogueLine,
   EpisodeAudience,
   EpisodeFormat,
   EpisodeLength,
   EpisodeMode,
   EpisodeOptions,
+  PodcastScript,
 } from "./types";
 import {
   DEFAULT_GUEST_VOICE,
@@ -47,7 +49,73 @@ export function normalizeOptions(input: unknown): EpisodeOptions {
     hostVoice: normalizeVoice(o.hostVoice, DEFAULT_HOST_VOICE),
     guestVoice: normalizeVoice(o.guestVoice, DEFAULT_GUEST_VOICE),
     readerVoice: normalizeVoice(o.readerVoice, DEFAULT_READER_VOICE),
+    reviewScript: o.reviewScript === true,
   };
+}
+
+const MAX_SCRIPT_LINES = 600;
+const MAX_LINE_CHARS = 5_000;
+
+export interface ScriptValidation {
+  ok: boolean;
+  error?: string;
+  script?: PodcastScript;
+}
+
+// Validates a user-edited script and caps total length to the tier the user
+// already paid for, so editing can't inflate TTS cost beyond the quote.
+export function validateEditedScript(
+  input: unknown,
+  mode: EpisodeMode,
+  length: EpisodeLength,
+): ScriptValidation {
+  const raw = input as { title?: unknown; lines?: unknown } | null;
+  if (!raw || !Array.isArray(raw.lines)) {
+    return { ok: false, error: "Script must have a lines array" };
+  }
+  if (raw.lines.length === 0) {
+    return { ok: false, error: "Script cannot be empty" };
+  }
+  if (raw.lines.length > MAX_SCRIPT_LINES) {
+    return { ok: false, error: `Too many lines (max ${MAX_SCRIPT_LINES})` };
+  }
+  const lines: DialogueLine[] = [];
+  let total = 0;
+  for (const entry of raw.lines) {
+    const line = entry as { speaker?: unknown; text?: unknown };
+    if (line.speaker !== "HOST" && line.speaker !== "GUEST") {
+      return { ok: false, error: "Each line needs speaker HOST or GUEST" };
+    }
+    if (typeof line.text !== "string") {
+      return { ok: false, error: "Each line needs text" };
+    }
+    const text = line.text.trim();
+    if (text.length === 0) continue;
+    if (text.length > MAX_LINE_CHARS) {
+      return { ok: false, error: "A line is too long" };
+    }
+    total += text.length;
+    lines.push({ speaker: line.speaker, text });
+  }
+  if (lines.length === 0) {
+    return { ok: false, error: "Script cannot be empty" };
+  }
+  const budget = Math.round(
+    (mode === "reading"
+      ? LENGTH_BUDGETS[length].readChars
+      : LENGTH_BUDGETS[length].scriptChars) * 1.25,
+  );
+  if (total > budget) {
+    return {
+      ok: false,
+      error: `Edited script is too long for the ${length} length you chose`,
+    };
+  }
+  const title =
+    typeof raw.title === "string" && raw.title.trim()
+      ? raw.title.trim().slice(0, 200)
+      : "Untitled episode";
+  return { ok: true, script: { title, lines } };
 }
 
 export function isSingleVoiceFormat(format: EpisodeFormat): boolean {

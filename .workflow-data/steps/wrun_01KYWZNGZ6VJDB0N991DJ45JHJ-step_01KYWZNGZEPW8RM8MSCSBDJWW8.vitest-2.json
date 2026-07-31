@@ -1,0 +1,20 @@
+{
+  "runId": "wrun_01KYWZNGZ6VJDB0N991DJ45JHJ",
+  "stepId": "step_01KYWZNGZEPW8RM8MSCSBDJWW8",
+  "stepName": "step//./workflows/generate-episode//synthesizeStep",
+  "status": "completed",
+  "input": {
+    "__type": "Uint8Array",
+    "data": "ZGV2bFt7ImFyZ3MiOjEsImNsb3N1cmVWYXJzIjotMSwidGhpc1ZhbCI6LTF9LFsyXSwiMTExMTExMTEtMTExMS00MTExLTgxMTEtMTExMTExMTExMTExIl0="
+  },
+  "attempt": 1,
+  "startedAt": "2026-07-31T21:00:47.409Z",
+  "createdAt": "2026-07-31T21:00:47.351Z",
+  "updatedAt": "2026-07-31T21:00:47.632Z",
+  "specVersion": 3,
+  "output": {
+    "__type": "Uint8Array",
+    "data": "ZGV2bC0x"
+  },
+  "completedAt": "2026-07-31T21:00:47.632Z"
+}

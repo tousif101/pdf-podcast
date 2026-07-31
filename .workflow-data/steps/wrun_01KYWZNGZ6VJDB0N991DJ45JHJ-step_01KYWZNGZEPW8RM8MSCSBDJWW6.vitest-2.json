@@ -1,0 +1,20 @@
+{
+  "runId": "wrun_01KYWZNGZ6VJDB0N991DJ45JHJ",
+  "stepId": "step_01KYWZNGZEPW8RM8MSCSBDJWW6",
+  "stepName": "step//./workflows/generate-episode//extractStep",
+  "status": "completed",
+  "input": {
+    "__type": "Uint8Array",
+    "data": "ZGV2bFt7ImFyZ3MiOjEsImNsb3N1cmVWYXJzIjotMSwidGhpc1ZhbCI6LTF9LFsyXSwiMTExMTExMTEtMTExMS00MTExLTgxMTEtMTExMTExMTExMTExIl0="
+  },
+  "attempt": 1,
+  "startedAt": "2026-07-31T21:00:47.116Z",
+  "createdAt": "2026-07-31T21:00:47.027Z",
+  "updatedAt": "2026-07-31T21:00:47.159Z",
+  "specVersion": 3,
+  "output": {
+    "__type": "Uint8Array",
+    "data": "ZGV2bFsiVGhlIEhpc3Rvcnkgb2YgQ29mZmVlLiBDb2ZmZWUgY3VsdGl2YXRpb24gYmVnYW4gaW4gRXRoaW9waWEgb3ZlciBhIHRob3VzYW5kIHllYXJzIGFnby4gTGVnZW5kIHNheXMgYSBnb2F0IGhlcmRlciBuYW1lZCBLYWxkaSBub3RpY2VkIGhpcyBnb2F0cyBiZWNhbWUgZW5lcmdldGljIGFmdGVyIGVhdGluZyByZWQgYmVycmllcy4gQnkgdGhlIGZpZnRlZW50aCBjZW50dXJ5LCBjb2ZmZWUgd2FzIGJlaW5nIHJvYXN0ZWQgYW5kIGJyZXdlZCBpbiBZZW1lbiBtdWNoIGFzIGl0IGlzIHRvZGF5LiBDb2ZmZWUgaG91c2VzIHNwcmVhZCB0aHJvdWdoIHRoZSBPdHRvbWFuIEVtcGlyZSBhbmQgcmVhY2hlZCBFdXJvcGUgaW4gdGhlIHNldmVudGVlbnRoIGNlbnR1cnkuIFRoZXkgYmVjYW1lIGNlbnRlcnMgb2YgY29udmVyc2F0aW9uIGFuZCBjb21tZXJjZSwgc29tZXRpbWVzIGNhbGxlZCBwZW5ueSB1bml2ZXJzaXRpZXMgaW4gRW5nbGFuZC4gVG9kYXkgY29mZmVlIGlzIG9uZSBvZiB0aGUgbW9zdCB0cmFkZWQgYWdyaWN1bHR1cmFsIGNvbW1vZGl0aWVzIGluIHRoZSB3b3JsZC4gQXJhYmljYSBhbmQgUm9idXN0YSBhcmUgdGhlIHR3byBkb21pbmFudCBzcGVjaWVzIGdyb3duIGNvbW1lcmNpYWxseSBhY3Jvc3MgdGhlIGJlYW4gYmVsdC4iXQ=="
+  },
+  "completedAt": "2026-07-31T21:00:47.159Z"
+}

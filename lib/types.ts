@@ -2,6 +2,7 @@ export type EpisodeStatus =
   | "pending"
   | "extracting"
   | "scripting"
+  | "script_ready"
   | "synthesizing"
   | "ready"
   | "error";
@@ -23,6 +24,8 @@ export interface EpisodeOptions {
   hostVoice: string;
   guestVoice: string;
   readerVoice: string;
+  /** Pause after scripting so the user can edit before audio is generated. */
+  reviewScript: boolean;
 }
 
 export interface DialogueLine {

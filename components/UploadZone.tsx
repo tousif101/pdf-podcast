@@ -323,6 +323,17 @@ export default function UploadZone({
             />
           </div>
         )}
+
+        <label className="flex items-center gap-2.5 pt-1 text-sm text-zinc-300">
+          <input
+            type="checkbox"
+            checked={options.reviewScript}
+            disabled={busy}
+            onChange={(e) => set("reviewScript", e.target.checked)}
+            className="h-4 w-4 rounded border-zinc-700 bg-zinc-900 accent-violet-500"
+          />
+          Review &amp; edit the script before generating audio
+        </label>
       </div>
 
       <button

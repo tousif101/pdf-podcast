@@ -1,0 +1,20 @@
+{
+  "runId": "wrun_01KYWZNGZ6VJDB0N991DJ45JHJ",
+  "stepId": "step_01KYWZNGZEPW8RM8MSCSBDJWW7",
+  "stepName": "step//./workflows/generate-episode//scriptStep",
+  "status": "completed",
+  "input": {
+    "__type": "Uint8Array",
+    "data": "ZGV2bFt7ImFyZ3MiOjEsImNsb3N1cmVWYXJzIjotMSwidGhpc1ZhbCI6LTF9LFsyLDNdLCIxMTExMTExMS0xMTExLTQxMTEtODExMS0xMTExMTExMTExMTEiLCJUaGUgSGlzdG9yeSBvZiBDb2ZmZWUuIENvZmZlZSBjdWx0aXZhdGlvbiBiZWdhbiBpbiBFdGhpb3BpYSBvdmVyIGEgdGhvdXNhbmQgeWVhcnMgYWdvLiBMZWdlbmQgc2F5cyBhIGdvYXQgaGVyZGVyIG5hbWVkIEthbGRpIG5vdGljZWQgaGlzIGdvYXRzIGJlY2FtZSBlbmVyZ2V0aWMgYWZ0ZXIgZWF0aW5nIHJlZCBiZXJyaWVzLiBCeSB0aGUgZmlmdGVlbnRoIGNlbnR1cnksIGNvZmZlZSB3YXMgYmVpbmcgcm9hc3RlZCBhbmQgYnJld2VkIGluIFllbWVuIG11Y2ggYXMgaXQgaXMgdG9kYXkuIENvZmZlZSBob3VzZXMgc3ByZWFkIHRocm91Z2ggdGhlIE90dG9tYW4gRW1waXJlIGFuZCByZWFjaGVkIEV1cm9wZSBpbiB0aGUgc2V2ZW50ZWVudGggY2VudHVyeS4gVGhleSBiZWNhbWUgY2VudGVycyBvZiBjb252ZXJzYXRpb24gYW5kIGNvbW1lcmNlLCBzb21ldGltZXMgY2FsbGVkIHBlbm55IHVuaXZlcnNpdGllcyBpbiBFbmdsYW5kLiBUb2RheSBjb2ZmZWUgaXMgb25lIG9mIHRoZSBtb3N0IHRyYWRlZCBhZ3JpY3VsdHVyYWwgY29tbW9kaXRpZXMgaW4gdGhlIHdvcmxkLiBBcmFiaWNhIGFuZCBSb2J1c3RhIGFyZSB0aGUgdHdvIGRvbWluYW50IHNwZWNpZXMgZ3Jvd24gY29tbWVyY2lhbGx5IGFjcm9zcyB0aGUgYmVhbiBiZWx0LiJd"
+  },
+  "attempt": 1,
+  "startedAt": "2026-07-31T21:00:47.285Z",
+  "createdAt": "2026-07-31T21:00:47.223Z",
+  "updatedAt": "2026-07-31T21:00:47.289Z",
+  "specVersion": 3,
+  "output": {
+    "__type": "Uint8Array",
+    "data": "ZGV2bC0x"
+  },
+  "completedAt": "2026-07-31T21:00:47.289Z"
+}

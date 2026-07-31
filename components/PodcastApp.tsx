@@ -5,6 +5,7 @@ import type {
   Episode,
   EpisodeMode,
   EpisodeOptions,
+  PodcastScript,
   UploadQuote,
 } from "@/lib/types";
 import { ACTIVE_STATUSES } from "./format";
@@ -196,6 +197,31 @@ export default function PodcastApp({ userEmail, onSignOut }: PodcastAppProps) {
     [refreshCredits],
   );
 
+  const handleReviewSubmit = useCallback(
+    async (id: string, script: PodcastScript) => {
+      const res = await fetch(`/api/episodes/${id}/script`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(script),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        throw new Error(body?.error ?? `Could not save script (${res.status}).`);
+      }
+      // Optimistically move it out of review so the editor closes immediately.
+      setEpisodes((prev) =>
+        prev
+          ? prev.map((e) =>
+              e.id === id ? { ...e, status: "synthesizing", script } : e,
+            )
+          : prev,
+      );
+    },
+    [],
+  );
+
   const handleDelete = useCallback(
     async (id: string) => {
       if (!window.confirm("Delete this episode? This cannot be undone.")) {
@@ -335,6 +361,9 @@ export default function PodcastApp({ userEmail, onSignOut }: PodcastAppProps) {
                     )
                   }
                   onDelete={() => void handleDelete(episode.id)}
+                  onReviewSubmit={(script) =>
+                    handleReviewSubmit(episode.id, script)
+                  }
                 />
               ))}
             </ul>

@@ -1,8 +1,10 @@
 "use client";
 
-import type { Episode } from "@/lib/types";
+import type { Episode, PodcastScript } from "@/lib/types";
+import { isSingleVoiceFormat, normalizeOptions } from "@/lib/options";
 import { STATUS_LABELS, formatDate, formatTime } from "./format";
 import DownloadButton from "./DownloadButton";
+import ScriptEditor from "./ScriptEditor";
 
 interface EpisodeCardProps {
   episode: Episode;
@@ -11,6 +13,7 @@ interface EpisodeCardProps {
   onPlay: () => void;
   onToggleExpand: () => void;
   onDelete: () => void;
+  onReviewSubmit: (script: PodcastScript) => Promise<void>;
 }
 
 export default function EpisodeCard({
@@ -20,10 +23,12 @@ export default function EpisodeCard({
   onPlay,
   onToggleExpand,
   onDelete,
+  onReviewSubmit,
 }: EpisodeCardProps) {
   const isReady = episode.status === "ready";
   const isError = episode.status === "error";
-  const inProgress = !isReady && !isError;
+  const needsReview = episode.status === "script_ready";
+  const inProgress = !isReady && !isError && !needsReview;
 
   const meta = [formatDate(episode.createdAt)];
   if (isReady && typeof episode.durationSeconds === "number") {
@@ -143,6 +148,16 @@ export default function EpisodeCard({
           />
           {STATUS_LABELS[episode.status]}
         </div>
+      )}
+
+      {needsReview && episode.script && (
+        <ScriptEditor
+          script={episode.script}
+          singleVoice={isSingleVoiceFormat(
+            normalizeOptions(episode.options).format,
+          )}
+          onSubmit={onReviewSubmit}
+        />
       )}
 
       {isError && (

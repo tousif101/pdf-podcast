@@ -1,9 +1,12 @@
 import type { EpisodeStatus } from "@/lib/types";
 
+// Statuses that keep the client polling and hold a generation slot.
+// script_ready waits on the user but still occupies a slot until resolved.
 export const ACTIVE_STATUSES: EpisodeStatus[] = [
   "pending",
   "extracting",
   "scripting",
+  "script_ready",
   "synthesizing",
 ];
 
@@ -11,6 +14,7 @@ export const STATUS_LABELS: Record<EpisodeStatus, string> = {
   pending: "Queued…",
   extracting: "Extracting text…",
   scripting: "Writing script…",
+  script_ready: "Ready to review",
   synthesizing: "Generating audio…",
   ready: "Ready",
   error: "Failed",

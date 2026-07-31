@@ -1,19 +1,39 @@
-import { FatalError } from "workflow";
-import type { PodcastScript } from "@/lib/types";
+import { createHook, FatalError } from "workflow";
 
-export async function generateEpisode(episodeId: string) {
+export async function generateEpisode(
+  episodeId: string,
+  reviewScript = false,
+) {
   "use workflow";
 
   try {
     const text = await extractStep(episodeId);
-    const script = await scriptStep(episodeId, text);
-    await synthesizeStep(episodeId, script);
+    await scriptStep(episodeId, text);
+    if (reviewScript) {
+      // Suspend (free) until the user approves the script from the review UI.
+      // The PATCH /script route saves any edits then resumes this token.
+      await markScriptReady(episodeId);
+      const hook = createHook<{ ok: boolean }>({
+        token: `approve:${episodeId}`,
+      });
+      await hook;
+    }
+    await synthesizeStep(episodeId);
   } catch (err) {
     const message = (err instanceof Error ? err.message : String(err))
       .replace(/^(Fatal|Retryable)Error:\s*/, "")
       .slice(0, 300);
     await failStep(episodeId, message);
     throw err;
+  }
+}
+
+async function markScriptReady(episodeId: string) {
+  "use step";
+  console.log(`[generate-episode:${episodeId}] awaiting script review`);
+  const { getStore } = await import("@/lib/store");
+  if (!(await getStore().patch(episodeId, { status: "script_ready" }))) {
+    throw new FatalError("Episode was deleted");
   }
 }
 
@@ -46,10 +66,7 @@ async function extractStep(episodeId: string): Promise<string> {
   return text;
 }
 
-async function scriptStep(
-  episodeId: string,
-  text: string,
-): Promise<PodcastScript> {
+async function scriptStep(episodeId: string, text: string): Promise<void> {
   "use step";
   console.log(`[generate-episode:${episodeId}] generating script`);
   const { getStore } = await import("@/lib/store");
@@ -78,10 +95,9 @@ async function scriptStep(
       tts: "",
     },
   });
-  return script;
 }
 
-async function synthesizeStep(episodeId: string, script: PodcastScript) {
+async function synthesizeStep(episodeId: string) {
   "use step";
   console.log(`[generate-episode:${episodeId}] synthesizing audio`);
   const { getStore } = await import("@/lib/store");
@@ -93,6 +109,10 @@ async function synthesizeStep(episodeId: string, script: PodcastScript) {
   const store = getStore();
   const episode = await store.patch(episodeId, { status: "synthesizing" });
   if (!episode) throw new FatalError("Episode was deleted");
+  // The script in the DB may have been edited during review — it's the source
+  // of truth, not whatever scriptStep originally produced.
+  const script = episode.script;
+  if (!script) throw new FatalError("Script is missing");
 
   const { audio, mimeType, durationSeconds } = await synthesizeDialogue(
     script,

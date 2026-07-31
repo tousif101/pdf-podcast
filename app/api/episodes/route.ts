@@ -113,7 +113,7 @@ export async function POST(request: Request) {
   try {
     await store.saveSource(episode.id, data);
     await store.create(episode);
-    await start(generateEpisode, [episode.id]);
+    await start(generateEpisode, [episode.id, options.reviewScript]);
   } catch (err) {
     console.error(`Failed to start generation for ${episode.id}:`, err);
     await refundEpisode(user.id, episode.id);

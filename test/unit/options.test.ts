@@ -44,6 +44,7 @@ test("normalizeOptions preserves valid values", () => {
     hostVoice: "Charon",
     guestVoice: "Aoede",
     readerVoice: "Zephyr",
+    reviewScript: true,
   });
   assert.deepEqual(o, {
     length: "deep",
@@ -52,7 +53,14 @@ test("normalizeOptions preserves valid values", () => {
     hostVoice: "Charon",
     guestVoice: "Aoede",
     readerVoice: "Zephyr",
+    reviewScript: true,
   });
+});
+
+test("reviewScript defaults false and only true when explicitly set", () => {
+  assert.equal(normalizeOptions({}).reviewScript, false);
+  assert.equal(normalizeOptions({ reviewScript: "yes" }).reviewScript, false);
+  assert.equal(normalizeOptions({ reviewScript: true }).reviewScript, true);
 });
 
 test("isSingleVoiceFormat identifies brief and lecture", () => {
