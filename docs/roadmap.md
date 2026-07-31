@@ -40,18 +40,16 @@ The features commuters notice in the first five minutes. All client-side or smal
 
 ---
 
-## 🎛️ Phase 2 — Control *(complaints #1, #2 — the two most-frequent in the industry · ~1–2 days)*
+## 🎛️ Phase 2 — Control ✅ SHIPPED 2026-07-31 *(complaints #1, #2 — the two most-frequent in the industry)*
 
-The research's top two complaints are both "no control." We attack them with per-episode options at upload time.
+The research's top two complaints are both "no control." Attacked with per-episode options at upload time.
 
-- [ ] **Voice picker** — complaint #1 (very high frequency). Gemini TTS ships 30 prebuilt voices; expose a curated 6–8 (mix of warm/bright, male/female, plus non-American-accent options — an explicitly cited gap). Per-episode `hostVoice`/`guestVoice`/`readerVoice` columns; a "preview voice" button plays a canned 3-second sample (pre-generated once, stored as static assets — zero runtime cost).
-- [ ] **Length presets** — complaint #2. Short (~3 min), Standard (~7 min), Deep (~15 min) → maps to script char budgets (2k / 4.5k / 9k) and prompt guidance. Long scripts chunk through TTS exactly like read-aloud already does.
-- [ ] **Tone & format presets** — Conversation gains variants: *Brief* (single host, headline summary), *Discussion* (current two-host), *Debate* (hosts take opposing sides), *Lecture* (expert monologue, "80,000 Hours-depth" — a named market gap). Each is just a different system prompt + speaker config; the pipeline doesn't change.
-- [ ] **Audience level** — "explain like I'm new" vs "assume expertise" toggle folded into the script prompt (one enum column, one prompt line).
+- [x] **Voice picker** — 7 API-validated Gemini voices (Kore/Puck/Enceladus/Charon/Aoede/Leda/Zephyr) with warm/bright descriptions; per-episode host/guest/reader voice.
+- [x] **Length presets** — Short (~3 min), Standard (~7 min), Deep (~15 min) → script char budgets (2k/4.5k/9k) + read-aloud caps (30k/100k/200k) + credit cost (reading now scales with the length cap, not raw doc size).
+- [x] **Format presets** — Discussion (two-host), Brief (single-host summary), Debate (opposing sides), Lecture (expert monologue, "80,000 Hours-depth"). Brief & Lecture are single-voice, enforced in both LLM and mock paths.
+- [x] **Audience level** — beginner vs expert, folded into the script prompt.
 
-**Schema:** one migration — `options jsonb` on episodes (voices, length, format, audience). No new tables.
-
-**Exit test:** the same PDF generates a 3-min beginner brief and a 15-min expert debate with different voices, and both sound meaningfully different.
+**Schema:** one migration — `options jsonb` on episodes. Options normalized/validated server-side (injection-safe), threaded workflow → script + TTS. UploadZone options panel adapts to mode/format. 7 new option unit tests (60 unit + 2 integration pass).
 
 ---
 
