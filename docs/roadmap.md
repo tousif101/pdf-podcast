@@ -1,6 +1,6 @@
 # 🗺️ PDF Podcast — Product Roadmap
 
-*Built from the 2026 market research on PDF-to-podcast complaints ([saved in this repo](./market-research.md)) and the [monetization plan](./monetization-plan.md). Last updated: 2026-07-30.*
+*Built from the 2026 market research on PDF-to-podcast complaints ([saved in this repo](./market-research.md)) and the [monetization plan](./monetization-plan.md). Distribution/launch strategy lives in [go-to-market.md](./go-to-market.md). Last updated: 2026-07-31.*
 
 The research ranks the industry's top 10 complaints and top 10 requested features. This roadmap maps each one against what we've **already shipped**, then sequences the rest so every phase attacks the highest-frequency unmet complaint first.
 
@@ -153,6 +153,10 @@ Everything hard (idempotency, refunds, races) is absorbed by the append-only `cr
 **Exit test:** new user signs up → 5 free credits → generates 5 episodes → 6th shows the buy sheet → test-card purchase → webhook lands → balance 25 → failed generation auto-refunds.
 
 ---
+
+## 🚀 Go-to-market
+
+Distribution is the hard part, not building — full strategy in **[go-to-market.md](./go-to-market.md)**. Summary: launch to **two personas** (students = volume, document-heavy professionals = revenue), position as *"listen to your documents on the go, without the hallucinations"* (not a "Gemini Notebook alternative"), and grow via value-first Reddit + build-in-public on X + AI directories, with **long-tail SEO comparison content as the durable channel** and Product Hunt as a one-day spike. Start the SEO/community floor *before* shipping. The build phases below map directly to the launch pitch — Phase 5's private RSS is the professional persona's hook; Phases 1–3 are the student persona's daily-driver features.
 
 ## 📡 Phase 5 — Portability & Retention *(complaint #9 / market gap · ~1–2 days)*
 
