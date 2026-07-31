@@ -13,7 +13,7 @@ How to take PDF Podcast from a personal single-user app to a multi-user product 
 | TTS | Gemini 2.5 Flash TTS (~25 audio tokens/sec, $10/M) | ~$0.09 (≈$0.015/min) |
 | Storage/bandwidth | Vercel Blob | pennies |
 
-**All-in: roughly $0.10–0.15 per episode.** Read-aloud episodes cost slightly more TTS-wise (longer audio) but no LLM. A credit model of **1 credit = 1 episode** keeps UX simple and gives healthy margin at ~$0.25–0.50/credit retail. (Alternative: credits = audio minutes — fairer for long docs, but harder to explain and you don't know the minutes until *after* generation. Recommend per-episode with a page cap, e.g. reading mode capped at 24k chars as today.)
+**All-in: roughly $0.10–0.15 per conversation episode**; read-aloud scales with document length (~$0.015/min — a full 90-minute document ≈ $1.40). **Decision (2026-07-31): credits scale with PDF size**, quoted before the user confirms: conversation = 1 credit flat (fixed-length output); read-aloud = ⌈chars/25k⌉ credits (1 credit ≈ 25 audio minutes). Extraction is free and runs first, so the exact credit price is always shown *before* spending — this keeps size-based pricing from turning into the "unpredictable credits" complaint that plagues Wondercraft. `spend_credit` takes an `n` parameter; refunds mirror the same `n`.
 
 Suggested packaging:
 

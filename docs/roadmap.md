@@ -4,6 +4,8 @@
 
 The research ranks the industry's top 10 complaints and top 10 requested features. This roadmap maps each one against what we've **already shipped**, then sequences the rest so every phase attacks the highest-frequency unmet complaint first.
 
+> **🎯 North star (owner's core use case):** drop in *any* PDF → listen to the *whole thing* (read-aloud, full document) → **pick up exactly where you left off** on the next commute. Full-document reading shipped 2026-07-31 (100k-char cap); resume is the top player priority. Everything else serves this loop.
+
 ---
 
 ## 📊 Where we already beat the market (shipped today)
@@ -71,7 +73,19 @@ The "editable script before audio" differentiator that Descript/Jellypod adverti
 
 ## 💳 Phase 4 — Users, Free Credits & Stripe *(complaint #6: predictable pricing · ~2 days)*
 
-Full design in [monetization-plan.md](./monetization-plan.md). The research is blunt about what to avoid: credit confusion (Wondercraft), deceptive trials and hard-to-cancel flows (Podcastle, Speechify). Our answer: **1 credit = 1 episode, packs not subscriptions, cancel-nothing because there's nothing recurring.**
+Full design in [monetization-plan.md](./monetization-plan.md). The research is blunt about what to avoid: credit confusion (Wondercraft), deceptive trials and hard-to-cancel flows (Podcastle, Speechify). Our answer: **size-based credits that are still predictable — the price is shown *before* you confirm, packs not subscriptions, cancel-nothing because there's nothing recurring.**
+
+### Credits scale with PDF size
+
+TTS cost scales with characters spoken (~$0.015/min), so pricing follows document size — but is always quoted up front to dodge the "unpredictable credits" complaint:
+
+| Episode | Credits | Why |
+|---|---|---|
+| Conversation (any size PDF) | **1** | Output is a fixed ~6–8 min summary regardless of input size |
+| Read-aloud ≤ 25k chars (~25 min) | **1** | Baseline unit |
+| Read-aloud, larger | **⌈chars / 25k⌉** (e.g. 94k-char doc = 4 credits) | Audio minutes — and your TTS bill — scale linearly with text |
+
+Mechanics: extraction runs *before* the spend (it's free), so the upload flow can show **"This document is 38 pages ≈ 90 min of audio — 4 credits. Generate?"** and only then call `spend_credit(n)`. The ledger design is unchanged — `delta` just varies. Failed generation refunds the same `n`.
 
 ### Stripe, the super-easy version
 

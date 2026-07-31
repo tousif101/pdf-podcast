@@ -10,6 +10,37 @@ interface PlayerProps {
 }
 
 const SKIP_SECONDS = 15;
+const RESUME_KEY_PREFIX = "resume:";
+const RESUME_SAVE_INTERVAL_S = 3;
+// Don't bother resuming right at the start, and restart finished episodes.
+const RESUME_MIN_S = 10;
+const RESUME_END_MARGIN_S = 5;
+
+function readResumePosition(episodeId: string): number {
+  try {
+    const raw = localStorage.getItem(RESUME_KEY_PREFIX + episodeId);
+    const value = raw ? Number(raw) : NaN;
+    return Number.isFinite(value) && value > RESUME_MIN_S ? value : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function writeResumePosition(episodeId: string, seconds: number) {
+  try {
+    localStorage.setItem(RESUME_KEY_PREFIX + episodeId, String(seconds));
+  } catch {
+    // Storage full/blocked: resume is best-effort.
+  }
+}
+
+function clearResumePosition(episodeId: string) {
+  try {
+    localStorage.removeItem(RESUME_KEY_PREFIX + episodeId);
+  } catch {
+    // ignore
+  }
+}
 const HANDLED_ACTIONS: MediaSessionAction[] = [
   "play",
   "pause",
@@ -21,6 +52,8 @@ const HANDLED_ACTIONS: MediaSessionAction[] = [
 
 export default function Player({ episode, onClose }: PlayerProps) {
   const audioRef = useRef<HTMLAudioElement>(null);
+  const lastSavedRef = useRef(0);
+  const restoredRef = useRef(false);
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(episode.durationSeconds ?? 0);
@@ -57,12 +90,43 @@ export default function Player({ episode, onClose }: PlayerProps) {
   }, []);
 
   // The parent remounts this component per episode (key={episode.id}), so
-  // playback starts once on mount.
+  // playback starts once on mount, continuing from the last saved position.
   useEffect(() => {
-    audioRef.current?.play().catch(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    const saved = readResumePosition(episode.id);
+    if (saved > 0) {
+      // Seeking before metadata loads is unreliable; apply on both paths.
+      const apply = () => {
+        if (restoredRef.current) return;
+        if (
+          Number.isFinite(audio.duration) &&
+          saved < audio.duration - RESUME_END_MARGIN_S
+        ) {
+          audio.currentTime = saved;
+          setCurrentTime(saved);
+        }
+        restoredRef.current = true;
+      };
+      if (audio.readyState >= 1) apply();
+      else audio.addEventListener("loadedmetadata", apply, { once: true });
+    } else {
+      restoredRef.current = true;
+    }
+    audio.play().catch(() => {
       // Autoplay can be blocked; the user can press play manually.
     });
-  }, []);
+  }, [episode.id]);
+
+  // Persist position on unmount so switching episodes/closing keeps progress.
+  useEffect(() => {
+    return () => {
+      const audio = audioRef.current;
+      if (audio && audio.currentTime > RESUME_MIN_S && !audio.ended) {
+        writeResumePosition(episode.id, audio.currentTime);
+      }
+    };
+  }, [episode.id]);
 
   useEffect(() => {
     if (!("mediaSession" in navigator)) return;
@@ -289,10 +353,20 @@ export default function Player({ episode, onClose }: PlayerProps) {
           onEnded={() => {
             setPlaying(false);
             setSessionPlaybackState("paused");
+            clearResumePosition(episode.id);
           }}
           onTimeUpdate={(event) => {
-            setCurrentTime(event.currentTarget.currentTime);
+            const time = event.currentTarget.currentTime;
+            setCurrentTime(time);
             updatePositionState();
+            if (
+              restoredRef.current &&
+              time > RESUME_MIN_S &&
+              Math.abs(time - lastSavedRef.current) >= RESUME_SAVE_INTERVAL_S
+            ) {
+              lastSavedRef.current = time;
+              writeResumePosition(episode.id, time);
+            }
           }}
           onDurationChange={(event) => {
             const value = event.currentTarget.duration;
