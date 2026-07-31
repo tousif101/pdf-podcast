@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { PodcastScript } from "../types";
 
 // Keeps the combined dialogue within a single Gemini TTS call and a ~10 minute episode.
-const MAX_SOURCE_CHARS = 60_000;
+const MAX_SOURCE_CHARS = 150_000;
 const MAX_SCRIPT_CHARS = 4_500;
 
 const scriptSchema = z.object({
@@ -81,7 +81,7 @@ export async function generatePodcastScript(
 // "Read aloud" mode: no LLM, no summarizing — the extracted text becomes the
 // script verbatim, chunked into narrator lines so TTS requests stay small and
 // the transcript stays scrollable.
-const MAX_READ_CHARS = 24_000;
+const MAX_READ_CHARS = Number(process.env.PODCAST_MAX_READ_CHARS ?? 100_000);
 const READ_CHUNK_CHARS = 900;
 
 export function verbatimScript(
@@ -106,10 +106,12 @@ export function verbatimScript(
 }
 
 function mockScript(text: string, sourceFilename: string): PodcastScript {
-  const sentences = text
-    .split(/(?<=[.!?])\s+/)
-    .filter((s) => s.length > 20)
-    .slice(0, 12);
+  // Sample sentences evenly across the whole document so the fallback still
+  // covers all of it, not just the opening page.
+  const all = text.split(/(?<=[.!?])\s+/).filter((s) => s.length > 20);
+  const target = 40;
+  const step = Math.max(1, Math.floor(all.length / target));
+  const sentences = all.filter((_, i) => i % step === 0).slice(0, target);
   const title = sourceFilename.replace(/\.pdf$/i, "").replace(/[-_]+/g, " ");
   const lines: PodcastScript["lines"] = [
     {
