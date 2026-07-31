@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Episode, EpisodeMode } from "@/lib/types";
+import type { Episode, EpisodeMode, UploadQuote } from "@/lib/types";
 import { ACTIVE_STATUSES } from "./format";
 import UploadZone from "./UploadZone";
 import EpisodeCard from "./EpisodeCard";
@@ -21,6 +21,23 @@ export default function PodcastApp({ userEmail, onSignOut }: PodcastAppProps) {
   const [actionError, setActionError] = useState<string | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [credits, setCredits] = useState<{
+    balance: number | null;
+    isAdmin: boolean;
+  } | null>(null);
+
+  const refreshCredits = useCallback(() => {
+    fetch("/api/credits", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data) setCredits(data);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    refreshCredits();
+  }, [refreshCredits]);
 
   const requestSeqRef = useRef(0);
   const appliedSeqRef = useRef(0);
@@ -82,36 +99,64 @@ export default function PodcastApp({ userEmail, onSignOut }: PodcastAppProps) {
 
   useEffect(() => {
     if (!hasActiveEpisode) return;
-    const timer = setInterval(refresh, POLL_INTERVAL_MS);
+    const timer = setInterval(() => {
+      refresh();
+      // Failed generations refund credits, so keep the balance current too.
+      refreshCredits();
+    }, POLL_INTERVAL_MS);
     return () => clearInterval(timer);
-  }, [hasActiveEpisode, refresh]);
+  }, [hasActiveEpisode, refresh, refreshCredits]);
 
-  const handleUpload = useCallback(async (file: File, mode: EpisodeMode) => {
-    const form = new FormData();
-    form.append("file", file);
-    form.append("mode", mode);
-    const res = await fetch("/api/episodes", { method: "POST", body: form });
-    if (!res.ok) {
-      const body = (await res.json().catch(() => null)) as {
-        error?: string;
-      } | null;
-      throw new Error(body?.error ?? `Upload failed (${res.status}).`);
-    }
-    const { id } = (await res.json()) as { id: string };
-    deletedIdsRef.current.delete(id);
-    const optimistic: Episode = {
-      id,
-      title: file.name.replace(/\.pdf$/i, ""),
-      sourceFilename: file.name,
-      mode,
-      status: "pending",
-      createdAt: new Date().toISOString(),
-    };
-    setEpisodes((prev) => [
-      optimistic,
-      ...(prev ?? []).filter((episode) => episode.id !== id),
-    ]);
-  }, []);
+  const handleQuote = useCallback(
+    async (file: File, mode: EpisodeMode): Promise<UploadQuote> => {
+      const form = new FormData();
+      form.append("file", file);
+      form.append("mode", mode);
+      const res = await fetch("/api/episodes/quote", {
+        method: "POST",
+        body: form,
+      });
+      const body = (await res.json().catch(() => null)) as
+        | (UploadQuote & { error?: string })
+        | null;
+      if (!res.ok || !body || body.error) {
+        throw new Error(body?.error ?? `Could not price this PDF (${res.status}).`);
+      }
+      return body;
+    },
+    [],
+  );
+
+  const handleUpload = useCallback(
+    async (file: File, mode: EpisodeMode) => {
+      const form = new FormData();
+      form.append("file", file);
+      form.append("mode", mode);
+      const res = await fetch("/api/episodes", { method: "POST", body: form });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        throw new Error(body?.error ?? `Upload failed (${res.status}).`);
+      }
+      const { id } = (await res.json()) as { id: string };
+      deletedIdsRef.current.delete(id);
+      const optimistic: Episode = {
+        id,
+        title: file.name.replace(/\.pdf$/i, ""),
+        sourceFilename: file.name,
+        mode,
+        status: "pending",
+        createdAt: new Date().toISOString(),
+      };
+      setEpisodes((prev) => [
+        optimistic,
+        ...(prev ?? []).filter((episode) => episode.id !== id),
+      ]);
+      refreshCredits();
+    },
+    [refreshCredits],
+  );
 
   const handleDelete = useCallback(
     async (id: string) => {
@@ -173,6 +218,19 @@ export default function PodcastApp({ userEmail, onSignOut }: PodcastAppProps) {
             </h1>
             <p className="truncate text-xs text-zinc-400">{userEmail}</p>
           </div>
+          {credits && (
+            <span
+              className="shrink-0 rounded-full bg-violet-500/15 px-3 py-1 text-xs font-medium text-violet-300"
+              aria-label={
+                credits.isAdmin
+                  ? "Unlimited credits"
+                  : `${credits.balance} credits`
+              }
+            >
+              {credits.isAdmin ? "∞" : credits.balance}{" "}
+              {credits.isAdmin ? "" : credits.balance === 1 ? "credit" : "credits"}
+            </span>
+          )}
           <button
             type="button"
             onClick={onSignOut}
@@ -184,7 +242,7 @@ export default function PodcastApp({ userEmail, onSignOut }: PodcastAppProps) {
       </header>
 
       <main className="mx-auto w-full max-w-xl flex-1 px-4 pt-6">
-        <UploadZone onUpload={handleUpload} />
+        <UploadZone onQuote={handleQuote} onConfirm={handleUpload} />
 
         {actionError && (
           <p role="alert" className="mt-4 text-sm text-red-400">

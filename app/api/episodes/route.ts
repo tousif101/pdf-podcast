@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { start } from "workflow/api";
 import { getStore } from "@/lib/store";
 import { getSessionUser } from "@/lib/auth";
+import { creditCost, getBalance, refundEpisode, spendCredits } from "@/lib/credits";
+import { extractPdfText } from "@/lib/pipeline/extract";
 import { generateEpisode } from "@/workflows/generate-episode";
 import type { Episode } from "@/lib/types";
 
@@ -57,9 +59,35 @@ export async function POST(request: Request) {
   const modeField = form.get("mode");
   const mode = modeField === "reading" ? "reading" : "conversation";
 
+  let extractedChars: number;
+  try {
+    // PDF.js transfers (detaches) the buffer it's given — extract from a copy
+    // so `data` stays usable for saveSource below.
+    const { text } = await extractPdfText(new Uint8Array(data));
+    extractedChars = text.length;
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Could not read this PDF" },
+      { status: 422 },
+    );
+  }
+
+  const episodeId = crypto.randomUUID();
+  const cost = creditCost(mode, extractedChars);
+  if (!user.isAdmin) {
+    const ok = await spendCredits(user.id, cost, episodeId);
+    if (!ok) {
+      const balance = await getBalance(user.id);
+      return NextResponse.json(
+        { error: `Not enough credits (need ${cost}, have ${balance})`, cost, balance },
+        { status: 402 },
+      );
+    }
+  }
+
   const store = getStore();
   const episode: Episode = {
-    id: crypto.randomUUID(),
+    id: episodeId,
     userId: user.id,
     title: file.name.replace(/\.pdf$/i, "").replace(/[-_]+/g, " "),
     sourceFilename: file.name,
@@ -67,21 +95,24 @@ export async function POST(request: Request) {
     status: "pending",
     createdAt: new Date().toISOString(),
   };
-  await store.saveSource(episode.id, data);
-  await store.create(episode);
   try {
+    await store.saveSource(episode.id, data);
+    await store.create(episode);
     await start(generateEpisode, [episode.id]);
   } catch (err) {
-    console.error(`Failed to start workflow for ${episode.id}:`, err);
-    await store.patch(episode.id, {
-      status: "error",
-      error: "Could not start generation. Please retry the upload.",
-    });
+    console.error(`Failed to start generation for ${episode.id}:`, err);
+    await refundEpisode(user.id, episode.id);
+    await store
+      .patch(episode.id, {
+        status: "error",
+        error: "Could not start generation. Your credits were refunded.",
+      })
+      .catch(() => null);
     return NextResponse.json(
       { error: "Could not start generation" },
       { status: 500 },
     );
   }
 
-  return NextResponse.json({ id: episode.id }, { status: 202 });
+  return NextResponse.json({ id: episode.id, cost }, { status: 202 });
 }

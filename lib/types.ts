@@ -21,6 +21,17 @@ export interface PodcastScript {
   lines: DialogueLine[];
 }
 
+/** Response of POST /api/episodes/quote — the price shown before generating. */
+export interface UploadQuote {
+  pages: number;
+  chars: number;
+  cost: number;
+  estMinutes: number;
+  /** null when the account is admin (unlimited). */
+  balance: number | null;
+  isAdmin: boolean;
+}
+
 export interface Episode {
   id: string;
   /** Owner; undefined only on legacy pre-auth episodes. */

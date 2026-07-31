@@ -120,8 +120,8 @@ export default function Player({ episode, onClose }: PlayerProps) {
 
   // Persist position on unmount so switching episodes/closing keeps progress.
   useEffect(() => {
+    const audio = audioRef.current;
     return () => {
-      const audio = audioRef.current;
       if (audio && audio.currentTime > RESUME_MIN_S && !audio.ended) {
         writeResumePosition(episode.id, audio.currentTime);
       }

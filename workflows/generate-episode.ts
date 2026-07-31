@@ -110,7 +110,16 @@ async function failStep(episodeId: string, message: string) {
   console.error(`[generate-episode:${episodeId}] failed: ${message}`);
   try {
     const { getStore } = await import("@/lib/store");
-    await getStore().patch(episodeId, { status: "error", error: message });
+    const episode = await getStore().patch(episodeId, {
+      status: "error",
+      error: message,
+    });
+    if (episode?.userId) {
+      const { refundEpisode } = await import("@/lib/credits");
+      // No-op unless a spend row exists for this episode, so admin runs and
+      // retries are safe.
+      await refundEpisode(episode.userId, episodeId);
+    }
   } catch (patchErr) {
     // Never mask the original workflow error with a bookkeeping failure.
     console.error(

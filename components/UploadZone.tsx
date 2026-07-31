@@ -1,10 +1,11 @@
 "use client";
 
 import { useRef, useState } from "react";
-import type { EpisodeMode } from "@/lib/types";
+import type { EpisodeMode, UploadQuote } from "@/lib/types";
 
 interface UploadZoneProps {
-  onUpload: (file: File, mode: EpisodeMode) => Promise<void>;
+  onQuote: (file: File, mode: EpisodeMode) => Promise<UploadQuote>;
+  onConfirm: (file: File, mode: EpisodeMode) => Promise<void>;
 }
 
 const MODES: Array<{ value: EpisodeMode; label: string; hint: string }> = [
@@ -20,15 +21,19 @@ const MODES: Array<{ value: EpisodeMode; label: string; hint: string }> = [
   },
 ];
 
-export default function UploadZone({ onUpload }: UploadZoneProps) {
+export default function UploadZone({ onQuote, onConfirm }: UploadZoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragActive, setDragActive] = useState(false);
-  const [uploading, setUploading] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<EpisodeMode>("conversation");
+  const [pending, setPending] = useState<{
+    file: File;
+    quote: UploadQuote;
+  } | null>(null);
 
   const handleFile = async (file: File | null | undefined) => {
-    if (!file || uploading) return;
+    if (!file || busy) return;
     const isPdf =
       file.type === "application/pdf" ||
       file.name.toLowerCase().endsWith(".pdf");
@@ -36,19 +41,89 @@ export default function UploadZone({ onUpload }: UploadZoneProps) {
       setError("Only PDF files are supported.");
       return;
     }
-    setUploading(true);
+    setBusy(true);
     setError(null);
     try {
-      await onUpload(file, mode);
+      const quote = await onQuote(file, mode);
+      setPending({ file, quote });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Upload failed.");
+      setError(err instanceof Error ? err.message : "Could not read the PDF.");
     } finally {
-      setUploading(false);
+      setBusy(false);
       if (inputRef.current) inputRef.current.value = "";
     }
   };
 
+  const handleConfirm = async () => {
+    if (!pending || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await onConfirm(pending.file, mode);
+      setPending(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const selectedMode = MODES.find((m) => m.value === mode) ?? MODES[0];
+
+  if (pending) {
+    const { quote, file } = pending;
+    const affordable = quote.isAdmin || (quote.balance ?? 0) >= quote.cost;
+    return (
+      <div className="rounded-2xl border border-violet-500/40 bg-violet-500/5 px-5 py-5">
+        <p className="truncate font-medium text-zinc-100">{file.name}</p>
+        <p className="mt-1 text-sm text-zinc-400">
+          {quote.pages} {quote.pages === 1 ? "page" : "pages"} · ≈
+          {quote.estMinutes} min of audio · {selectedMode.label.toLowerCase()}
+        </p>
+        <p className="mt-3 text-sm">
+          {quote.isAdmin ? (
+            <span className="text-violet-300">Free — admin account</span>
+          ) : (
+            <span className="text-zinc-200">
+              Costs{" "}
+              <strong>
+                {quote.cost} {quote.cost === 1 ? "credit" : "credits"}
+              </strong>{" "}
+              · you have {quote.balance}
+            </span>
+          )}
+        </p>
+        {!affordable && (
+          <p className="mt-2 text-sm text-amber-400">
+            Not enough credits. Credit packs are coming soon.
+          </p>
+        )}
+        <div className="mt-4 flex gap-2">
+          <button
+            type="button"
+            onClick={() => void handleConfirm()}
+            disabled={busy || !affordable}
+            className="flex-1 rounded-xl bg-violet-500 px-4 py-2.5 font-medium text-white hover:bg-violet-400 disabled:opacity-50"
+          >
+            {busy ? "Starting…" : "Generate"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setPending(null)}
+            disabled={busy}
+            className="rounded-xl border border-zinc-700 px-4 py-2.5 text-zinc-300 hover:border-zinc-500"
+          >
+            Cancel
+          </button>
+        </div>
+        {error && (
+          <p role="alert" className="mt-3 text-sm text-red-400">
+            {error}
+          </p>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -63,7 +138,7 @@ export default function UploadZone({ onUpload }: UploadZoneProps) {
             type="button"
             role="radio"
             aria-checked={mode === option.value}
-            disabled={uploading}
+            disabled={busy}
             onClick={() => setMode(option.value)}
             className={`rounded-xl border px-3 py-2 text-left text-sm transition-colors ${
               mode === option.value
@@ -89,16 +164,16 @@ export default function UploadZone({ onUpload }: UploadZoneProps) {
           setDragActive(false);
           void handleFile(event.dataTransfer.files?.[0]);
         }}
-        disabled={uploading}
+        disabled={busy}
         aria-label="Upload a PDF to create a podcast episode"
         className={`w-full rounded-2xl border-2 border-dashed px-6 py-8 text-center transition-colors ${
           dragActive
             ? "border-violet-400 bg-violet-500/10"
             : "border-zinc-700 bg-zinc-900/40 hover:border-violet-500/60"
-        } ${uploading ? "opacity-60" : "cursor-pointer"}`}
+        } ${busy ? "opacity-60" : "cursor-pointer"}`}
       >
         <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-violet-500/15 text-violet-300">
-          {uploading ? (
+          {busy ? (
             <span
               className="h-5 w-5 animate-spin rounded-full border-2 border-violet-300 border-t-transparent"
               aria-hidden="true"
@@ -120,11 +195,11 @@ export default function UploadZone({ onUpload }: UploadZoneProps) {
           )}
         </span>
         <span className="mt-3 block font-medium text-zinc-100">
-          {uploading ? "Uploading…" : "Upload a PDF"}
+          {busy ? "Reading PDF…" : "Upload a PDF"}
         </span>
         <span className="mt-1 block text-sm text-zinc-400">
-          {uploading
-            ? "Starting episode generation"
+          {busy
+            ? "Calculating episode price"
             : "Tap to browse or drop a file here"}
         </span>
       </button>
