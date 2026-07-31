@@ -53,19 +53,24 @@ async function scriptStep(
   "use step";
   console.log(`[generate-episode:${episodeId}] generating script`);
   const { getStore } = await import("@/lib/store");
-  const { generatePodcastScript, scriptProviderName } = await import(
-    "@/lib/pipeline/script"
-  );
+  const { generatePodcastScript, verbatimScript, scriptProviderName } =
+    await import("@/lib/pipeline/script");
 
   const store = getStore();
   const episode = await store.patch(episodeId, { status: "scripting" });
   if (!episode) throw new FatalError("Episode was deleted");
 
-  const script = await generatePodcastScript(text, episode.sourceFilename);
+  const script =
+    episode.mode === "reading"
+      ? verbatimScript(text, episode.sourceFilename)
+      : await generatePodcastScript(text, episode.sourceFilename);
   await store.patch(episodeId, {
     title: script.title,
     script,
-    providers: { script: scriptProviderName(), tts: "" },
+    providers: {
+      script: episode.mode === "reading" ? "verbatim" : scriptProviderName(),
+      tts: "",
+    },
   });
   return script;
 }
@@ -82,7 +87,10 @@ async function synthesizeStep(episodeId: string, script: PodcastScript) {
   const episode = await store.patch(episodeId, { status: "synthesizing" });
   if (!episode) throw new FatalError("Episode was deleted");
 
-  const { audio, mimeType, durationSeconds } = await synthesizeDialogue(script);
+  const { audio, mimeType, durationSeconds } = await synthesizeDialogue(
+    script,
+    episode.mode ?? "conversation",
+  );
   const { url } = await store.saveAudio(episodeId, audio, mimeType);
 
   await store.patch(episodeId, {

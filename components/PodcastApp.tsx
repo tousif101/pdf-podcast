@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Episode } from "@/lib/types";
+import type { Episode, EpisodeMode } from "@/lib/types";
 import { ACTIVE_STATUSES } from "./format";
 import UploadZone from "./UploadZone";
 import EpisodeCard from "./EpisodeCard";
@@ -81,9 +81,10 @@ export default function PodcastApp() {
     return () => clearInterval(timer);
   }, [hasActiveEpisode, refresh]);
 
-  const handleUpload = useCallback(async (file: File) => {
+  const handleUpload = useCallback(async (file: File, mode: EpisodeMode) => {
     const form = new FormData();
     form.append("file", file);
+    form.append("mode", mode);
     const res = await fetch("/api/episodes", { method: "POST", body: form });
     if (!res.ok) {
       const body = (await res.json().catch(() => null)) as {
@@ -97,6 +98,7 @@ export default function PodcastApp() {
       id,
       title: file.name.replace(/\.pdf$/i, ""),
       sourceFilename: file.name,
+      mode,
       status: "pending",
       createdAt: new Date().toISOString(),
     };

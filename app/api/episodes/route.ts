@@ -42,11 +42,15 @@ export async function POST(request: Request) {
     );
   }
 
+  const modeField = form.get("mode");
+  const mode = modeField === "reading" ? "reading" : "conversation";
+
   const store = getStore();
   const episode: Episode = {
     id: crypto.randomUUID(),
     title: file.name.replace(/\.pdf$/i, "").replace(/[-_]+/g, " "),
     sourceFilename: file.name,
+    mode,
     status: "pending",
     createdAt: new Date().toISOString(),
   };

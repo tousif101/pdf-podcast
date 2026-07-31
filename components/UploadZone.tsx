@@ -1,16 +1,31 @@
 "use client";
 
 import { useRef, useState } from "react";
+import type { EpisodeMode } from "@/lib/types";
 
 interface UploadZoneProps {
-  onUpload: (file: File) => Promise<void>;
+  onUpload: (file: File, mode: EpisodeMode) => Promise<void>;
 }
+
+const MODES: Array<{ value: EpisodeMode; label: string; hint: string }> = [
+  {
+    value: "conversation",
+    label: "Conversation",
+    hint: "Two hosts discuss the document",
+  },
+  {
+    value: "reading",
+    label: "Read aloud",
+    hint: "One calm voice reads the text verbatim",
+  },
+];
 
 export default function UploadZone({ onUpload }: UploadZoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragActive, setDragActive] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [mode, setMode] = useState<EpisodeMode>("conversation");
 
   const handleFile = async (file: File | null | undefined) => {
     if (!file || uploading) return;
@@ -24,7 +39,7 @@ export default function UploadZone({ onUpload }: UploadZoneProps) {
     setUploading(true);
     setError(null);
     try {
-      await onUpload(file);
+      await onUpload(file, mode);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed.");
     } finally {
@@ -33,8 +48,34 @@ export default function UploadZone({ onUpload }: UploadZoneProps) {
     }
   };
 
+  const selectedMode = MODES.find((m) => m.value === mode) ?? MODES[0];
+
   return (
     <div>
+      <div
+        role="radiogroup"
+        aria-label="Episode style"
+        className="mb-3 grid grid-cols-2 gap-2"
+      >
+        {MODES.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            role="radio"
+            aria-checked={mode === option.value}
+            disabled={uploading}
+            onClick={() => setMode(option.value)}
+            className={`rounded-xl border px-3 py-2 text-left text-sm transition-colors ${
+              mode === option.value
+                ? "border-violet-500/70 bg-violet-500/10 text-zinc-50"
+                : "border-zinc-800 bg-zinc-900/40 text-zinc-400 hover:border-zinc-600"
+            }`}
+          >
+            <span className="block font-medium">{option.label}</span>
+          </button>
+        ))}
+      </div>
+      <p className="mb-3 text-xs text-zinc-500">{selectedMode.hint}.</p>
       <button
         type="button"
         onClick={() => inputRef.current?.click()}

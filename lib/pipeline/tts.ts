@@ -1,5 +1,5 @@
 import { pcm16ToWav, wavDurationSeconds } from "../audio/wav";
-import type { PodcastScript } from "../types";
+import type { EpisodeMode, PodcastScript } from "../types";
 
 export interface TtsResult {
   audio: Uint8Array;
@@ -12,6 +12,9 @@ const GEMINI_TTS_MODEL =
   process.env.PODCAST_TTS_MODEL ?? "gemini-2.5-flash-preview-tts";
 const HOST_VOICE = process.env.PODCAST_HOST_VOICE ?? "Kore";
 const GUEST_VOICE = process.env.PODCAST_GUEST_VOICE ?? "Puck";
+// Soft, breathy prebuilt voice for read-aloud mode.
+const READER_VOICE = process.env.PODCAST_READER_VOICE ?? "Enceladus";
+const READ_TTS_CHUNK_CHARS = 3_500;
 
 function geminiApiKey(): string | undefined {
   return (
@@ -25,8 +28,45 @@ export function ttsProviderName(): string {
 
 export async function synthesizeDialogue(
   script: PodcastScript,
+  mode: EpisodeMode = "conversation",
 ): Promise<TtsResult> {
-  return geminiApiKey() ? geminiTts(script) : mockTts(script);
+  if (!geminiApiKey()) return mockTts(script);
+  return mode === "reading" ? geminiReadAloud(script) : geminiTts(script);
+}
+
+// Single soothing voice reading the text verbatim, chunked to keep each
+// request small; PCM chunks share a sample rate and concatenate cleanly.
+async function geminiReadAloud(script: PodcastScript): Promise<TtsResult> {
+  const chunks: string[] = [];
+  let current = "";
+  for (const line of script.lines) {
+    if (current && current.length + line.text.length + 1 > READ_TTS_CHUNK_CHARS) {
+      chunks.push(current);
+      current = line.text;
+    } else {
+      current = current ? `${current}\n${line.text}` : line.text;
+    }
+  }
+  if (current) chunks.push(current);
+
+  const pcmParts: Uint8Array[] = [];
+  let sampleRate = GEMINI_SAMPLE_RATE;
+  for (const chunk of chunks) {
+    const part = await geminiGenerate(
+      `Read the following text aloud in a calm, warm, soothing voice at a relaxed pace:\n${chunk}`,
+      {
+        voiceConfig: { prebuiltVoiceConfig: { voiceName: READER_VOICE } },
+      },
+    );
+    pcmParts.push(part.pcm);
+    sampleRate = part.sampleRate;
+  }
+  const pcm = new Uint8Array(Buffer.concat(pcmParts.map((p) => Buffer.from(p))));
+  return {
+    audio: pcm16ToWav(pcm, sampleRate),
+    mimeType: "audio/wav",
+    durationSeconds: wavDurationSeconds(pcm.byteLength, sampleRate),
+  };
 }
 
 async function geminiTts(script: PodcastScript): Promise<TtsResult> {
@@ -34,6 +74,34 @@ async function geminiTts(script: PodcastScript): Promise<TtsResult> {
     .map((line) => `${line.speaker === "HOST" ? "Host" : "Guest"}: ${line.text}`)
     .join("\n");
 
+  const { pcm, sampleRate } = await geminiGenerate(
+    `TTS the following podcast conversation between Host and Guest:\n${transcript}`,
+    {
+      multiSpeakerVoiceConfig: {
+        speakerVoiceConfigs: [
+          {
+            speaker: "Host",
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: HOST_VOICE } },
+          },
+          {
+            speaker: "Guest",
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: GUEST_VOICE } },
+          },
+        ],
+      },
+    },
+  );
+  return {
+    audio: pcm16ToWav(pcm, sampleRate),
+    mimeType: "audio/wav",
+    durationSeconds: wavDurationSeconds(pcm.byteLength, sampleRate),
+  };
+}
+
+async function geminiGenerate(
+  text: string,
+  speechConfig: Record<string, unknown>,
+): Promise<{ pcm: Uint8Array; sampleRate: number }> {
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_TTS_MODEL}:generateContent`,
     {
@@ -43,35 +111,10 @@ async function geminiTts(script: PodcastScript): Promise<TtsResult> {
         "x-goog-api-key": geminiApiKey()!,
       },
       body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              {
-                text: `TTS the following podcast conversation between Host and Guest:\n${transcript}`,
-              },
-            ],
-          },
-        ],
+        contents: [{ parts: [{ text }] }],
         generationConfig: {
           responseModalities: ["AUDIO"],
-          speechConfig: {
-            multiSpeakerVoiceConfig: {
-              speakerVoiceConfigs: [
-                {
-                  speaker: "Host",
-                  voiceConfig: {
-                    prebuiltVoiceConfig: { voiceName: HOST_VOICE },
-                  },
-                },
-                {
-                  speaker: "Guest",
-                  voiceConfig: {
-                    prebuiltVoiceConfig: { voiceName: GUEST_VOICE },
-                  },
-                },
-              ],
-            },
-          },
+          speechConfig,
         },
       }),
     },
@@ -110,11 +153,7 @@ async function geminiTts(script: PodcastScript): Promise<TtsResult> {
   );
   const rateMatch = /rate=(\d+)/.exec(parts[0].inlineData?.mimeType ?? "");
   const sampleRate = rateMatch ? parseInt(rateMatch[1], 10) : GEMINI_SAMPLE_RATE;
-  return {
-    audio: pcm16ToWav(pcm, sampleRate),
-    mimeType: "audio/wav",
-    durationSeconds: wavDurationSeconds(pcm.byteLength, sampleRate),
-  };
+  return { pcm, sampleRate };
 }
 
 // Speech-paced tones (distinct pitch per speaker) so the full pipeline and

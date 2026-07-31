@@ -8,6 +8,9 @@ export type EpisodeStatus =
 
 export type Speaker = "HOST" | "GUEST";
 
+/** conversation = two-host discussion; reading = one voice reads the text verbatim. */
+export type EpisodeMode = "conversation" | "reading";
+
 export interface DialogueLine {
   speaker: Speaker;
   text: string;
@@ -22,6 +25,7 @@ export interface Episode {
   id: string;
   title: string;
   sourceFilename: string;
+  mode?: EpisodeMode;
   status: EpisodeStatus;
   error?: string;
   createdAt: string;

@@ -78,6 +78,33 @@ export async function generatePodcastScript(
   }
 }
 
+// "Read aloud" mode: no LLM, no summarizing — the extracted text becomes the
+// script verbatim, chunked into narrator lines so TTS requests stay small and
+// the transcript stays scrollable.
+const MAX_READ_CHARS = 24_000;
+const READ_CHUNK_CHARS = 900;
+
+export function verbatimScript(
+  sourceText: string,
+  sourceFilename: string,
+): PodcastScript {
+  const title = sourceFilename.replace(/\.pdf$/i, "").replace(/[-_]+/g, " ");
+  const text = sourceText.slice(0, MAX_READ_CHARS);
+  const sentences = text.split(/(?<=[.!?])\s+/);
+  const lines: PodcastScript["lines"] = [];
+  let current = "";
+  for (const sentence of sentences) {
+    if (current && current.length + sentence.length + 1 > READ_CHUNK_CHARS) {
+      lines.push({ speaker: "HOST", text: current });
+      current = sentence;
+    } else {
+      current = current ? `${current} ${sentence}` : sentence;
+    }
+  }
+  if (current) lines.push({ speaker: "HOST", text: current });
+  return { title, lines };
+}
+
 function mockScript(text: string, sourceFilename: string): PodcastScript {
   const sentences = text
     .split(/(?<=[.!?])\s+/)
