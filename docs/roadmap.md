@@ -18,6 +18,7 @@ The research's #1 mobile finding — *"no major tool combines editable scripts, 
 | No offline listening (#9) | Stream-only, no download | ✅ **Shipped** — one-tap offline download; service worker serves cached audio with proper Range/206 so seeking works offline |
 | No transcript (#5) | "Ironic for a text-to-audio tool" | ✅ **Shipped** — every episode stores its full script; HOST/GUEST transcript renders in-app |
 | Repetitive filler & forced summarization (#3) | 5 minutes of content padded to 20 | ✅ **Shipped** — **Read-aloud mode** speaks the document verbatim; zero LLM padding by design |
+| Audio privacy (multi-user) | — | ✅ **Shipped (Chunk D, 2026-07-31)** — source PDFs + audio are private blobs streamed only through the auth'd, ownership-checked route (no public URLs); unauthenticated access returns 401 |
 | Hallucination exposure (#4) | Fabricated facts spoken with confidence | ✅ Partially — read-aloud mode is hallucination-proof (no LLM); conversation mode still needs grounding (Phase 3) |
 | Reliability / "audio won't play" (#7) | Broken exports, endless spinners | ✅ Solid base — durable workflow retries transient failures; failures surface as clear per-episode errors |
 
@@ -29,9 +30,9 @@ The research's #1 mobile finding — *"no major tool combines editable scripts, 
 
 The features commuters notice in the first five minutes. All client-side or small pipeline tweaks — no schema changes.
 
-- [ ] **Playback speed 0.5×–3×** — requested feature #6; Speechify's most-praised capability. A speed button in the player cycling 1× → 1.25× → 1.5× → 2× → 3× → 0.75×, persisted per device (`localStorage`), applied via `audio.playbackRate` (Media Session `setPositionState` already reports rate — no extra work).
-- [ ] **Resume where you left off** — store `{episodeId: seconds}` in `localStorage` on `timeupdate` (throttled), seek on player mount, clear on `ended`. Show a "▶ Resume 12:34" hint on episode cards.
-- [ ] **MP3 export instead of WAV** — complaint #9 explicitly calls out NotebookLM's uncompressed WAV. Encode PCM → MP3 in the synthesize step with `lamejs` (pure JS, no ffmpeg, works in Vercel functions). ~10× smaller files = faster first-play on mobile data *and* the prerequisite for RSS (podcast apps expect MP3). Keep WAV as fallback if encoding fails.
+- [x] **Playback speed 0.5×–3×** ✅ shipped 2026-07-31 — player cycles 1× → 1.25× → 1.5× → 2× → 3× → 0.75×, persisted per device, applied via `audio.playbackRate`.
+- [x] **Resume where you left off** ✅ shipped — position saved to `localStorage` (throttled), restored on mount, cleared on end.
+- [x] **MP3 export instead of WAV** ✅ shipped — PCM → MP3 (64 kbps mono) via `@breezystack/lamejs` in the synthesize step, ~6× smaller than WAV, WAV fallback if encoding fails.
 - [ ] **Time-to-first-audio** — Google shipped "95% less buffering" as a headline feature; treat it as a churn metric. MP3 alone cuts transfer ~10×; also `preload="auto"` once selected, and (stretch) synthesize read-aloud chunk 1 first and set status `ready` early while remaining chunks append.
 - [ ] **Download progress + storage indicator** — show MB size and a downloading spinner on the offline button (battery/storage anxiety is a documented commute complaint).
 
