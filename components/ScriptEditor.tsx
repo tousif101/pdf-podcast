@@ -1,7 +1,42 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { DialogueLine, PodcastScript } from "@/lib/types";
+
+// Grows to fit its content so long read-aloud chunks aren't clipped.
+function AutoTextarea({
+  value,
+  onChange,
+  disabled,
+  ariaLabel,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  disabled?: boolean;
+  ariaLabel: string;
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  const resize = () => {
+    const el = ref.current;
+    if (el) {
+      el.style.height = "auto";
+      el.style.height = `${el.scrollHeight}px`;
+    }
+  };
+  useEffect(resize, [value]);
+  return (
+    <textarea
+      ref={ref}
+      value={value}
+      disabled={disabled}
+      aria-label={ariaLabel}
+      onChange={(e) => onChange(e.target.value)}
+      onInput={resize}
+      rows={1}
+      className="w-full resize-none overflow-hidden rounded-md border border-zinc-800 bg-zinc-950/60 px-2 py-1.5 text-sm leading-relaxed text-zinc-200 focus:border-violet-500 focus:outline-none"
+    />
+  );
+}
 
 interface ScriptEditorProps {
   script: PodcastScript;
@@ -116,13 +151,11 @@ export default function ScriptEditor({
                 </button>
               </div>
             </div>
-            <textarea
+            <AutoTextarea
               value={line.text}
               disabled={busy}
-              onChange={(e) => update(i, { text: e.target.value })}
-              rows={2}
-              aria-label={`Line ${i + 1} text`}
-              className="w-full resize-y rounded-md border border-zinc-800 bg-zinc-950/60 px-2 py-1.5 text-sm text-zinc-200 focus:border-violet-500 focus:outline-none"
+              onChange={(text) => update(i, { text })}
+              ariaLabel={`Line ${i + 1} text`}
             />
           </div>
         ))}

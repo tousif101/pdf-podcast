@@ -153,9 +153,11 @@ export default function EpisodeCard({
       {needsReview && episode.script && (
         <ScriptEditor
           script={episode.script}
-          singleVoice={isSingleVoiceFormat(
-            normalizeOptions(episode.options).format,
-          )}
+          // Read-aloud and brief/lecture formats are single-narrator.
+          singleVoice={
+            episode.mode === "reading" ||
+            isSingleVoiceFormat(normalizeOptions(episode.options).format)
+          }
           onSubmit={onReviewSubmit}
         />
       )}
