@@ -17,6 +17,10 @@ import Spinner from "./ui/Spinner";
 // ~640 script characters ≈ one minute of two-host audio.
 const CHARS_PER_MINUTE = 640;
 
+interface EditableLine extends DialogueLine {
+  id: number;
+}
+
 // Grows to fit its content so long read-aloud chunks aren't clipped.
 function AutoTextarea({
   value,
@@ -61,12 +65,16 @@ export default function ScriptEditor({ id }: { id: string }) {
   const router = useRouter();
   const [episode, setEpisode] = useState<Episode | "missing" | null>(null);
   const [title, setTitle] = useState("");
-  const [lines, setLines] = useState<DialogueLine[]>([]);
+  // Lines carry a client-side id so React keeps card ⇄ content ⇄ focus
+  // together when lines are reordered, split, or deleted.
+  const [lines, setLines] = useState<EditableLine[]>([]);
   const [budget, setBudget] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
+  const [focusedId, setFocusedId] = useState<number | null>(null);
   const textareaRefs = useRef(new Map<number, HTMLTextAreaElement>());
+  const nextIdRef = useRef(0);
+  const newId = () => nextIdRef.current++;
 
   useEffect(() => {
     fetch(`/api/episodes/${id}`, { cache: "no-store" })
@@ -75,7 +83,12 @@ export default function ScriptEditor({ id }: { id: string }) {
         setEpisode(data);
         if (data.script) {
           setTitle(data.script.title);
-          setLines(data.script.lines);
+          setLines(
+            data.script.lines.map((line) => ({
+              ...line,
+              id: nextIdRef.current++,
+            })),
+          );
           setBudget(editCharBudget(scriptChars(data.script)));
         }
       })
@@ -136,31 +149,40 @@ export default function ScriptEditor({ id }: { id: string }) {
   const overBudget = chars > budget;
   const estMinutes = Math.max(1, Math.round(chars / CHARS_PER_MINUTE));
 
-  const update = (i: number, patch: Partial<DialogueLine>) =>
-    setLines((prev) => prev.map((l, j) => (j === i ? { ...l, ...patch } : l)));
-  const remove = (i: number) =>
-    setLines((prev) => prev.filter((_, j) => j !== i));
-  const move = (i: number, dir: -1 | 1) =>
+  const update = (lineId: number, patch: Partial<DialogueLine>) =>
+    setLines((prev) =>
+      prev.map((l) => (l.id === lineId ? { ...l, ...patch } : l)),
+    );
+  const remove = (lineId: number) =>
+    setLines((prev) => prev.filter((l) => l.id !== lineId));
+  const move = (lineId: number, dir: -1 | 1) =>
     setLines((prev) => {
+      const i = prev.findIndex((l) => l.id === lineId);
       const j = i + dir;
-      if (j < 0 || j >= prev.length) return prev;
+      if (i < 0 || j < 0 || j >= prev.length) return prev;
       const next = [...prev];
       [next[i], next[j]] = [next[j], next[i]];
       return next;
     });
   const add = () =>
-    setLines((prev) => [...prev, { speaker: "HOST", text: "" }]);
-  const split = (i: number) => {
-    const el = textareaRefs.current.get(i);
-    const text = lines[i]?.text ?? "";
+    setLines((prev) => [...prev, { id: newId(), speaker: "HOST", text: "" }]);
+  const split = (lineId: number) => {
+    const el = textareaRefs.current.get(lineId);
+    const line = lines.find((l) => l.id === lineId);
+    if (!line) return;
+    const text = line.text;
     const at = el ? el.selectionStart : Math.floor(text.length / 2);
     if (at <= 0 || at >= text.length) return;
-    setLines((prev) => [
-      ...prev.slice(0, i),
-      { speaker: prev[i].speaker, text: text.slice(0, at).trim() },
-      { speaker: prev[i].speaker, text: text.slice(at).trim() },
-      ...prev.slice(i + 1),
-    ]);
+    setLines((prev) =>
+      prev.flatMap((l) =>
+        l.id === lineId
+          ? [
+              { ...l, text: text.slice(0, at).trim() },
+              { id: newId(), speaker: l.speaker, text: text.slice(at).trim() },
+            ]
+          : [l],
+      ),
+    );
   };
 
   const submit = async () => {
@@ -171,7 +193,10 @@ export default function ScriptEditor({ id }: { id: string }) {
       const res = await fetch(`/api/episodes/${id}/script`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: title.trim() || "Untitled episode", lines }),
+        body: JSON.stringify({
+          title: title.trim() || "Untitled episode",
+          lines: lines.map(({ speaker, text }) => ({ speaker, text })),
+        }),
       });
       if (!res.ok) {
         const body = (await res.json().catch(() => null)) as {
@@ -255,19 +280,21 @@ export default function ScriptEditor({ id }: { id: string }) {
 
         <div className="mt-4 space-y-2.5">
           {lines.map((line, i) => {
-            const focused = focusedIndex === i;
+            const focused = focusedId === line.id;
             const other: Speaker = line.speaker === "HOST" ? "GUEST" : "HOST";
             return (
               <div
-                key={i}
-                onFocusCapture={() => setFocusedIndex(i)}
+                key={line.id}
+                onFocusCapture={() => setFocusedId(line.id)}
                 onBlurCapture={(event) => {
                   if (
                     !event.currentTarget.contains(
                       event.relatedTarget as Node | null,
                     )
                   ) {
-                    setFocusedIndex((current) => (current === i ? null : current));
+                    setFocusedId((current) =>
+                      current === line.id ? null : current,
+                    );
                   }
                 }}
                 className={`rounded-[14px] bg-card p-4 transition-colors ${
@@ -287,11 +314,11 @@ export default function ScriptEditor({ id }: { id: string }) {
                   <AutoTextarea
                     value={line.text}
                     disabled={busy}
-                    onChange={(text) => update(i, { text })}
+                    onChange={(text) => update(line.id, { text })}
                     ariaLabel={`Line ${i + 1} text`}
                     textareaRef={(el) => {
-                      if (el) textareaRefs.current.set(i, el);
-                      else textareaRefs.current.delete(i);
+                      if (el) textareaRefs.current.set(line.id, el);
+                      else textareaRefs.current.delete(line.id);
                     }}
                   />
                 </div>
@@ -302,7 +329,7 @@ export default function ScriptEditor({ id }: { id: string }) {
                         type="button"
                         disabled={busy}
                         onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => update(i, { speaker: other })}
+                        onClick={() => update(line.id, { speaker: other })}
                         className="text-[12px] font-medium text-ink-3 transition-colors hover:text-ink"
                       >
                         Swap to {voiceName(other)}
@@ -312,7 +339,7 @@ export default function ScriptEditor({ id }: { id: string }) {
                       type="button"
                       disabled={busy}
                       onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => split(i)}
+                      onClick={() => split(line.id)}
                       className="text-[12px] font-medium text-ink-3 transition-colors hover:text-ink"
                     >
                       Split line
@@ -321,7 +348,7 @@ export default function ScriptEditor({ id }: { id: string }) {
                       type="button"
                       disabled={busy || i === 0}
                       onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => move(i, -1)}
+                      onClick={() => move(line.id, -1)}
                       className="text-[12px] font-medium text-ink-3 transition-colors hover:text-ink disabled:opacity-30"
                     >
                       Move up
@@ -330,7 +357,7 @@ export default function ScriptEditor({ id }: { id: string }) {
                       type="button"
                       disabled={busy || i === lines.length - 1}
                       onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => move(i, 1)}
+                      onClick={() => move(line.id, 1)}
                       className="text-[12px] font-medium text-ink-3 transition-colors hover:text-ink disabled:opacity-30"
                     >
                       Move down
@@ -339,7 +366,7 @@ export default function ScriptEditor({ id }: { id: string }) {
                       type="button"
                       disabled={busy}
                       onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => remove(i)}
+                      onClick={() => remove(line.id)}
                       className="text-[12px] font-medium text-signal-ink"
                     >
                       Delete

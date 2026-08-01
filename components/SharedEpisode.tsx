@@ -60,6 +60,8 @@ export default function SharedEpisode({ token }: { token: string }) {
   const progressPercent =
     totalDuration > 0 ? (currentTime / totalDuration) * 100 : 0;
   const lines = data.script?.lines ?? [];
+  // The share API doesn't include episode options, so infer the style.
+  const twoVoices = lines.some((line) => line.speaker === "GUEST");
   const previewLines = showFullTranscript
     ? lines
     : lines.slice(0, PREVIEW_LINES);
@@ -94,7 +96,7 @@ export default function SharedEpisode({ token }: { token: string }) {
         {typeof data.durationSeconds === "number" && (
           <p className="mt-2 font-mono text-[11.5px] text-ink-4">
             {formatTime(data.durationSeconds)}
-            {lines.length > 0 && " · two hosts"}
+            {twoVoices && " · two hosts"}
           </p>
         )}
 
@@ -166,13 +168,15 @@ export default function SharedEpisode({ token }: { token: string }) {
                 key={i}
                 className={`text-[13.5px] leading-[1.65] text-ink-2 ${i > 0 ? "mt-3" : ""}`}
               >
-                <span
-                  className={`mr-2 font-mono text-[11px] uppercase tracking-[.05em] ${
-                    line.speaker === "GUEST" ? "text-done" : "text-signal-ink"
-                  }`}
-                >
-                  {line.speaker}
-                </span>
+                {twoVoices && (
+                  <span
+                    className={`mr-2 font-mono text-[11px] uppercase tracking-[.05em] ${
+                      line.speaker === "GUEST" ? "text-done" : "text-signal-ink"
+                    }`}
+                  >
+                    {line.speaker}
+                  </span>
+                )}
                 {line.text}
               </p>
             ))}
