@@ -1,0 +1,53 @@
+<!-- @dsCard group="Screens" -->
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Landing</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>body{background:#0a0a0a;color:#fafafa;font-family:ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif}</style>
+</head>
+<body>
+<div class="mx-auto max-w-[430px] min-h-dvh">
+  <header class="flex items-center gap-3 px-5 py-5">
+    <span class="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-500/15 text-violet-400">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" class="h-5 w-5"><path d="M5 10v4m3.5-7v10M12 8v8m3.5-11v14M19 10v4"/></svg>
+    </span>
+    <span class="text-lg font-semibold tracking-tight text-zinc-50">PDF Podcast</span>
+    <a class="ml-auto rounded-lg bg-violet-500 px-4 py-2 text-sm font-medium text-white">Get started</a>
+  </header>
+
+  <section class="px-5 pt-8 pb-10">
+    <h1 class="text-4xl font-bold leading-tight tracking-tight text-zinc-50">
+      Turn anything you have to read into a podcast you can
+      <span class="text-violet-400">actually listen to.</span>
+    </h1>
+    <p class="mt-5 text-lg text-zinc-400">
+      Upload a PDF and get an episode you can play on your phone with the screen off,
+      edit before it's made, and trust because it won't make things up.
+    </p>
+    <ul class="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-sm text-zinc-400">
+      <li>✓ Lock-screen &amp; offline playback</li>
+      <li>✓ Editable scripts</li>
+      <li>✓ Multiple voices &amp; lengths</li>
+    </ul>
+
+    <div class="mt-8 w-full rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6">
+      <p class="mb-3 text-center text-sm font-medium text-zinc-200">Start free — 5 episodes on us</p>
+      <input placeholder="you@example.com" class="w-full rounded-xl border border-zinc-700 bg-zinc-950/60 px-4 py-3 text-zinc-100 placeholder:text-zinc-500" />
+      <button class="mt-3 w-full rounded-xl bg-violet-500 px-4 py-3 font-medium text-white">Email me a sign-in link</button>
+      <div class="my-4 flex items-center gap-3 text-xs text-zinc-600"><span class="h-px flex-1 bg-zinc-800"></span>or<span class="h-px flex-1 bg-zinc-800"></span></div>
+      <button class="w-full rounded-xl border border-zinc-700 bg-zinc-950/60 px-4 py-3 font-medium text-zinc-100">Continue with Google</button>
+    </div>
+  </section>
+
+  <section class="border-t border-zinc-900 bg-zinc-950/50 px-5 py-10 grid grid-cols-2 gap-4">
+    <div class="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5"><h3 class="font-semibold text-zinc-100">Listen anywhere</h3><p class="mt-1 text-sm text-zinc-400">Lock-screen controls, background &amp; offline playback.</p></div>
+    <div class="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5"><h3 class="font-semibold text-zinc-100">Your format, your voice</h3><p class="mt-1 text-sm text-zinc-400">Discussion, debate, briefing, or a calm read-aloud.</p></div>
+    <div class="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5"><h3 class="font-semibold text-zinc-100">Edit before it's made</h3><p class="mt-1 text-sm text-zinc-400">Fix a name or trim the fluff, then generate.</p></div>
+    <div class="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5"><h3 class="font-semibold text-zinc-100">No hallucinations</h3><p class="mt-1 text-sm text-zinc-400">Read-aloud speaks your document word-for-word.</p></div>
+  </section>
+</div>
+</body>
+</html>
