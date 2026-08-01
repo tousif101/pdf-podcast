@@ -167,7 +167,7 @@ Distribution is the hard part, not building — full strategy in **[go-to-market
 
 - [x] **Private RSS feed** ✅ SHIPPED 2026-07-31 — per-user `feed_tokens`; `GET /api/feed` returns the subscribe URL; `/api/feed/[token]/rss.xml` is public RSS 2.0 + iTunes tags (XML-escaped); `/api/feed/[token]/audio/[id].mp3` is token-gated audio that podcast apps fetch with no cookie (Range supported), verifying the episode belongs to the token's owner. "Subscribe in a podcast app" button with copyable URL. Verified in prod: feed loads unauthenticated, audio streams (206 on Range), wrong token/foreign episode → 404. 4 RSS unit tests.
 - [ ] **Multi-PDF episodes** — requested feature #8. Upload N PDFs → extractions concatenate with source labels → one episode. (Multi-file upload UI + a `sources` array; pipeline unchanged.)
-- [ ] **Share an episode** — public share link (opt-in per episode) rendering a minimal player page.
+- [x] **Share an episode** ✅ SHIPPED 2026-07-31 — opt-in per-episode `share_token`; public `/s/[token]` page (minimal player + transcript + "make your own" CTA); `/api/share/[token]` + `/api/share/[token]/audio` (token-gated, Range). Share button on ready cards with copy/unshare. Verified in prod: public page/audio work unauthenticated; unshare instantly revokes (404). The GTM viral loop. Also shipped: `/legal` privacy+terms page.
 - [ ] **Non-English** — requested feature #9. Gemini TTS speaks 24 languages; add a language option that flows into the script prompt and voice choice. Ship behind a "beta" label (research flags non-English quality as the industry's weak spot — set expectations).
 
 ---
