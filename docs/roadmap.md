@@ -147,6 +147,18 @@ Everything hard (idempotency, refunds, races) is absorbed by the append-only `cr
 
 ---
 
+## 🎀 Launch polish — branding & pre-launch checklist
+
+Before showing this to anyone, remove the "still a prototype" tells. These are mostly dashboard/account tasks (owner) plus small code hooks (me).
+
+- [ ] **Custom domain** — the app is on `pdf-podcast-ten.vercel.app`. Buy a domain (e.g. via Vercel Domains or any registrar), add it in Vercel → project → Domains, and set it as primary. Then update Supabase Auth URL config + Stripe/webhook URLs + `emailRedirectTo` to the new domain. *(owner buys domain; I wire the config)*
+- [ ] **Branded sign-in email** — the magic-link email currently comes from Supabase with default "Supabase Auth" wording. Fix in the Supabase dashboard → Authentication → Emails: set a custom **SMTP sender** (e.g. a domain email via Resend/Postmark) and edit the **email templates** (subject + body → "Sign in to PDF Podcast"). Custom SMTP also lifts the ~3-emails/hour rate limit on the built-in sender. *(owner: dashboard + SMTP provider)*
+- [ ] **Supabase Auth URL config** — Site URL + `/auth/callback` redirect (still pending; needed for normal email sign-in on the deployed domain).
+- [ ] **App name / favicon / OG image** — confirm final product name; add a real favicon and an OpenGraph share image (currently text-only OG tags).
+- [ ] **Legal footer** — a minimal privacy note + terms link (needed before Stripe live + public sharing).
+- [ ] **Rotate the secrets** shared during development (Supabase DB password, service key, Gemini key).
+- [ ] **Paid Gemini key** — the shared free-tier key rate-limits (429) under real usage; a paid key makes generation reliable.
+
 ## 🚀 Go-to-market
 
 Distribution is the hard part, not building — full strategy in **[go-to-market.md](./go-to-market.md)**. Summary: launch to **two personas** (students = volume, document-heavy professionals = revenue), position as *"listen to your documents on the go, without the hallucinations"* (not a "Gemini Notebook alternative"), and grow via value-first Reddit + build-in-public on X + AI directories, with **long-tail SEO comparison content as the durable channel** and Product Hunt as a one-day spike. Start the SEO/community floor *before* shipping. The build phases below map directly to the launch pitch — Phase 5's private RSS is the professional persona's hook; Phases 1–3 are the student persona's daily-driver features.
