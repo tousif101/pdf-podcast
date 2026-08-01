@@ -13,6 +13,7 @@ import UploadZone from "./UploadZone";
 import EpisodeCard from "./EpisodeCard";
 import Player from "./Player";
 import BuyCredits from "./BuyCredits";
+import FeedButton from "./FeedButton";
 
 const POLL_INTERVAL_MS = 2500;
 const RECENT_EPISODE_WINDOW_MS = 2 * 60 * 1000;
@@ -374,6 +375,8 @@ export default function PodcastApp({ userEmail, onSignOut }: PodcastAppProps) {
               {loadError}
             </p>
           )}
+
+          {episodes?.some((e) => e.status === "ready") && <FeedButton />}
         </section>
       </main>
 
