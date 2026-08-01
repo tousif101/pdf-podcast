@@ -23,6 +23,8 @@ export interface ListFilter {
 export interface EpisodeStore {
   list(filter?: ListFilter): Promise<Episode[]>;
   get(id: string): Promise<Episode | null>;
+  getByShareToken(token: string): Promise<Episode | null>;
+  setShareToken(id: string, token: string | null): Promise<void>;
   create(episode: Episode): Promise<void>;
   /** Updates only the given fields. Returns null if the episode no longer exists. */
   patch(id: string, fields: Partial<Episode>): Promise<Episode | null>;
@@ -53,6 +55,8 @@ const AUDIO_EXT: Record<string, string> = {
 interface MetaDriver {
   list(filter?: ListFilter): Promise<Episode[]>;
   get(id: string): Promise<Episode | null>;
+  getByShareToken(token: string): Promise<Episode | null>;
+  setShareToken(id: string, token: string | null): Promise<void>;
   create(episode: Episode): Promise<void>;
   patch(id: string, fields: Partial<Episode>): Promise<Episode | null>;
   patchIf(
@@ -110,6 +114,17 @@ class FsMeta implements MetaDriver {
     }
   }
 
+  async getByShareToken(token: string): Promise<Episode | null> {
+    const all = await this.list();
+    return all.find((e) => e.shareToken === token) ?? null;
+  }
+
+  async setShareToken(id: string, token: string | null): Promise<void> {
+    const existing = await this.get(id);
+    if (!existing) return;
+    await this.write({ ...existing, shareToken: token ?? undefined });
+  }
+
   async create(episode: Episode): Promise<void> {
     await this.write(episode);
   }
@@ -146,6 +161,7 @@ type EpisodeRow = {
   source_filename: string;
   mode: Episode["mode"];
   options: Episode["options"] | null;
+  share_token: string | null;
   status: Episode["status"];
   error: string | null;
   created_at: string;
@@ -165,6 +181,7 @@ function rowToEpisode(row: EpisodeRow): Episode {
     sourceFilename: row.source_filename,
     mode: row.mode ?? "conversation",
     options: row.options ?? undefined,
+    shareToken: row.share_token ?? undefined,
     status: row.status,
     error: row.error ?? undefined,
     createdAt: row.created_at,
@@ -186,6 +203,8 @@ function episodeToRow(fields: Partial<Episode>): Partial<EpisodeRow> {
     row.source_filename = fields.sourceFilename;
   if (fields.mode !== undefined) row.mode = fields.mode;
   if (fields.options !== undefined) row.options = fields.options;
+  if (fields.shareToken !== undefined)
+    row.share_token = fields.shareToken ?? null;
   if (fields.status !== undefined) row.status = fields.status;
   if (fields.error !== undefined) row.error = fields.error;
   if (fields.createdAt !== undefined) row.created_at = fields.createdAt;
@@ -245,6 +264,26 @@ class SupabaseMeta implements MetaDriver {
       .maybeSingle();
     if (error) throw new Error(`episode get failed: ${error.message}`);
     return data ? rowToEpisode(data as EpisodeRow) : null;
+  }
+
+  async getByShareToken(token: string): Promise<Episode | null> {
+    const supabase = await this.client();
+    const { data, error } = await supabase
+      .from("episodes")
+      .select("*")
+      .eq("share_token", token)
+      .maybeSingle();
+    if (error) throw new Error(`episode share lookup failed: ${error.message}`);
+    return data ? rowToEpisode(data as EpisodeRow) : null;
+  }
+
+  async setShareToken(id: string, token: string | null): Promise<void> {
+    const supabase = await this.client();
+    const { error } = await supabase
+      .from("episodes")
+      .update({ share_token: token })
+      .eq("id", id);
+    if (error) throw new Error(`set share token failed: ${error.message}`);
   }
 
   async create(episode: Episode): Promise<void> {
@@ -503,6 +542,15 @@ class CompositeStore implements EpisodeStore {
   get(id: string) {
     assertId(id);
     return this.meta.get(id);
+  }
+
+  getByShareToken(token: string) {
+    return this.meta.getByShareToken(token);
+  }
+
+  setShareToken(id: string, token: string | null) {
+    assertId(id);
+    return this.meta.setShareToken(id, token);
   }
 
   create(episode: Episode) {

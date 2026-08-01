@@ -143,7 +143,10 @@ export default function Landing() {
       </section>
 
       <footer className="border-t border-zinc-900 px-5 py-8 text-center text-xs text-zinc-600">
-        PDF Podcast · Turn documents into audio you can listen to on the go.
+        <p>PDF Podcast · Turn documents into audio you can listen to on the go.</p>
+        <a href="/legal" className="mt-2 inline-block text-zinc-500 hover:text-zinc-300">
+          Privacy &amp; Terms
+        </a>
       </footer>
     </div>
   );

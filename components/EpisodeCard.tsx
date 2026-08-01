@@ -4,6 +4,7 @@ import type { Episode, PodcastScript } from "@/lib/types";
 import { isSingleVoiceFormat, normalizeOptions } from "@/lib/options";
 import { STATUS_LABELS, formatDate, formatTime } from "./format";
 import DownloadButton from "./DownloadButton";
+import ShareButton from "./ShareButton";
 import ScriptEditor from "./ScriptEditor";
 
 interface EpisodeCardProps {
@@ -181,6 +182,10 @@ export default function EpisodeCard({
               {expanded ? "Hide transcript" : "Transcript"}
             </button>
           )}
+          <ShareButton
+            episodeId={episode.id}
+            initialShared={Boolean(episode.shareToken)}
+          />
         </div>
       )}
 

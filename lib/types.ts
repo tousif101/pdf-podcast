@@ -57,6 +57,8 @@ export interface Episode {
   sourceFilename: string;
   mode?: EpisodeMode;
   options?: EpisodeOptions;
+  /** Public share token; set only when the owner opts into sharing. */
+  shareToken?: string;
   status: EpisodeStatus;
   error?: string;
   createdAt: string;
