@@ -142,12 +142,12 @@ export default function PodcastApp({ userEmail, onSignOut }: PodcastAppProps) {
 
   const handleQuote = useCallback(
     async (
-      file: File,
+      files: File[],
       mode: EpisodeMode,
       options: EpisodeOptions,
     ): Promise<UploadQuote> => {
       const form = new FormData();
-      form.append("file", file);
+      for (const file of files) form.append("file", file);
       form.append("mode", mode);
       form.append("options", JSON.stringify(options));
       const res = await fetch("/api/episodes/quote", {
@@ -166,9 +166,9 @@ export default function PodcastApp({ userEmail, onSignOut }: PodcastAppProps) {
   );
 
   const handleUpload = useCallback(
-    async (file: File, mode: EpisodeMode, options: EpisodeOptions) => {
+    async (files: File[], mode: EpisodeMode, options: EpisodeOptions) => {
       const form = new FormData();
-      form.append("file", file);
+      for (const file of files) form.append("file", file);
       form.append("mode", mode);
       form.append("options", JSON.stringify(options));
       const res = await fetch("/api/episodes", { method: "POST", body: form });
@@ -180,10 +180,14 @@ export default function PodcastApp({ userEmail, onSignOut }: PodcastAppProps) {
       }
       const { id } = (await res.json()) as { id: string };
       deletedIdsRef.current.delete(id);
+      const label =
+        files.length === 1
+          ? files[0].name.replace(/\.pdf$/i, "")
+          : `${files.length} documents`;
       const optimistic: Episode = {
         id,
-        title: file.name.replace(/\.pdf$/i, ""),
-        sourceFilename: file.name,
+        title: label,
+        sourceFilename: label,
         mode,
         options,
         status: "pending",

@@ -39,6 +39,9 @@ export interface EpisodeStore {
   delete(id: string): Promise<void>;
   saveSource(id: string, data: Uint8Array): Promise<void>;
   getSource(id: string): Promise<Uint8Array | null>;
+  /** Pre-extracted source text (used for multi-PDF episodes). */
+  saveSourceText(id: string, text: string): Promise<void>;
+  getSourceText(id: string): Promise<string | null>;
   saveAudio(id: string, data: Uint8Array, mimeType: string): Promise<void>;
   /** Streaming audio response honoring an optional Range header, or null. */
   openAudio(id: string, range: string | null): Promise<AudioResponse | null>;
@@ -344,6 +347,8 @@ export interface AudioResponse {
 interface BinaryDriver {
   saveSource(id: string, data: Uint8Array): Promise<void>;
   getSource(id: string): Promise<Uint8Array | null>;
+  saveSourceText(id: string, text: string): Promise<void>;
+  getSourceText(id: string): Promise<string | null>;
   saveAudio(id: string, data: Uint8Array, mimeType: string): Promise<void>;
   /** Streams audio (honoring an optional Range header) through the caller. */
   openAudio(
@@ -425,6 +430,21 @@ class FsBinary implements BinaryDriver {
     }
   }
 
+  async saveSourceText(id: string, text: string): Promise<void> {
+    await fs.writeFile(path.join(await this.dir("sources"), `${id}.txt`), text);
+  }
+
+  async getSourceText(id: string): Promise<string | null> {
+    try {
+      return await fs.readFile(
+        path.join(this.root, "sources", `${id}.txt`),
+        "utf8",
+      );
+    } catch {
+      return null;
+    }
+  }
+
   async saveAudio(id: string, data: Uint8Array, mimeType: string) {
     const ext = AUDIO_EXT[mimeType] ?? "bin";
     await fs.writeFile(path.join(await this.dir("audio"), `${id}.${ext}`), data);
@@ -444,6 +464,7 @@ class FsBinary implements BinaryDriver {
 
   async delete(id: string, mimeType?: string): Promise<void> {
     await fs.rm(path.join(this.root, "sources", `${id}.pdf`), { force: true });
+    await fs.rm(path.join(this.root, "sources", `${id}.txt`), { force: true });
     const exts = mimeType ? [AUDIO_EXT[mimeType] ?? "bin"] : Object.values(AUDIO_EXT);
     for (const ext of exts) {
       await fs.rm(path.join(this.root, "audio", `${id}.${ext}`), {
@@ -473,6 +494,23 @@ class BlobBinary implements BinaryDriver {
     const result = await get(`sources/${id}.pdf`, { access: "private" });
     if (!result?.stream) return null;
     return new Uint8Array(await new Response(result.stream).arrayBuffer());
+  }
+
+  async saveSourceText(id: string, text: string): Promise<void> {
+    const { put } = await this.blob();
+    await put(`sources/${id}.txt`, Buffer.from(text, "utf8"), {
+      access: "private",
+      addRandomSuffix: false,
+      allowOverwrite: true,
+      contentType: "text/plain; charset=utf-8",
+    });
+  }
+
+  async getSourceText(id: string): Promise<string | null> {
+    const { get } = await this.blob();
+    const result = await get(`sources/${id}.txt`, { access: "private" });
+    if (!result?.stream) return null;
+    return await new Response(result.stream).text();
   }
 
   async saveAudio(id: string, data: Uint8Array, mimeType: string) {
@@ -518,6 +556,7 @@ class BlobBinary implements BinaryDriver {
     const exts = mimeType ? [AUDIO_EXT[mimeType] ?? "bin"] : Object.values(AUDIO_EXT);
     const prefixes = [
       `sources/${id}.pdf`,
+      `sources/${id}.txt`,
       ...exts.map((ext) => `audio/${id}.${ext}`),
     ];
     for (const prefix of prefixes) {
@@ -583,6 +622,16 @@ class CompositeStore implements EpisodeStore {
   getSource(id: string) {
     assertId(id);
     return this.binary.getSource(id);
+  }
+
+  saveSourceText(id: string, text: string) {
+    assertId(id);
+    return this.binary.saveSourceText(id, text);
+  }
+
+  getSourceText(id: string) {
+    assertId(id);
+    return this.binary.getSourceText(id);
   }
 
   saveAudio(id: string, data: Uint8Array, mimeType: string) {

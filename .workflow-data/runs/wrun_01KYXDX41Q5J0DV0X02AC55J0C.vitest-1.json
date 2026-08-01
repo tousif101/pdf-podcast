@@ -1,0 +1,26 @@
+{
+  "runId": "wrun_01KYXDX41Q5J0DV0X02AC55J0C",
+  "deploymentId": "dpl_local@4.2.4",
+  "workflowName": "workflow//./workflows/generate-episode//generateEpisode",
+  "specVersion": 3,
+  "executionContext": {
+    "traceCarrier": {},
+    "workflowCoreVersion": "4.7.0",
+    "features": {
+      "encryption": false
+    }
+  },
+  "input": {
+    "__type": "Uint8Array",
+    "data": "ZGV2bFtbMV0sIjExMTExMTExLTExMTEtNDExMS04MTExLTExMTExMTExMTExMSJd"
+  },
+  "createdAt": "2026-08-01T01:09:35.931Z",
+  "startedAt": "2026-08-01T01:09:35.934Z",
+  "status": "completed",
+  "output": {
+    "__type": "Uint8Array",
+    "data": "ZGV2bC0x"
+  },
+  "completedAt": "2026-08-01T01:09:36.679Z",
+  "updatedAt": "2026-08-01T01:09:36.679Z"
+}

@@ -1,0 +1,16 @@
+{
+  "eventType": "step_created",
+  "specVersion": 3,
+  "correlationId": "step_01KYXDX41YBCA1SBEY5VZMVQ3D",
+  "eventData": {
+    "stepName": "step//./workflows/generate-episode//extractStep",
+    "workflowName": "workflow//./workflows/generate-episode//generateEpisode",
+    "input": {
+      "__type": "Uint8Array",
+      "data": "ZGV2bFt7ImFyZ3MiOjEsImNsb3N1cmVWYXJzIjotMSwidGhpc1ZhbCI6LTF9LFsyXSwiMzMzMzMzMzMtMzMzMy00MzMzLTgzMzMtMzMzMzMzMzMzMzMzIl0="
+    }
+  },
+  "runId": "wrun_01KYXDX41QHQNXNPWXSV25V81Q",
+  "eventId": "evnt_01KYXDX443D93D2AQ7KG6B6HYG",
+  "createdAt": "2026-08-01T01:09:36.003Z"
+}

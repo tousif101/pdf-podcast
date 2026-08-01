@@ -2,20 +2,7 @@ import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
 import { creditCost, estimateMinutes, getBalance } from "@/lib/credits";
 import { normalizeOptions } from "@/lib/options";
-import {
-  extractPdfText,
-  looksLikePdf,
-  validatePdfFile,
-} from "@/lib/pipeline/extract";
-
-function parseOptions(raw: FormDataEntryValue | null): unknown {
-  if (typeof raw !== "string") return undefined;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return undefined;
-  }
-}
+import { readUploads } from "@/lib/pipeline/extract";
 
 // Prices an upload without persisting anything: extraction is free, so the
 // exact credit cost is always shown before any spend.
@@ -27,33 +14,29 @@ export async function POST(request: Request) {
   const form = await request.formData();
   const mode = form.get("mode") === "reading" ? "reading" : "conversation";
   const options = normalizeOptions(parseOptions(form.get("options")));
-  const check = validatePdfFile(form.get("file"));
-  if (!check.ok) {
-    return NextResponse.json({ error: check.error }, { status: check.status });
+
+  const upload = await readUploads(form.getAll("file"));
+  if (!upload.ok) {
+    return NextResponse.json({ error: upload.error }, { status: upload.status });
   }
-  const data = new Uint8Array(await check.file.arrayBuffer());
-  if (!looksLikePdf(data, check.file.name)) {
-    return NextResponse.json(
-      { error: "Only PDF files are supported" },
-      { status: 415 },
-    );
-  }
+
+  const cost = creditCost(mode, upload.chars, options.length);
+  const balance = user.isAdmin ? null : await getBalance(user.id);
+  return NextResponse.json({
+    pages: upload.totalPages,
+    chars: upload.chars,
+    cost,
+    estMinutes: estimateMinutes(mode, upload.chars, options.length),
+    balance,
+    isAdmin: user.isAdmin,
+  });
+}
+
+function parseOptions(raw: FormDataEntryValue | null): unknown {
+  if (typeof raw !== "string") return undefined;
   try {
-    const { text, totalPages } = await extractPdfText(data);
-    const cost = creditCost(mode, text.length, options.length);
-    const balance = user.isAdmin ? null : await getBalance(user.id);
-    return NextResponse.json({
-      pages: totalPages,
-      chars: text.length,
-      cost,
-      estMinutes: estimateMinutes(mode, text.length, options.length),
-      balance,
-      isAdmin: user.isAdmin,
-    });
+    return JSON.parse(raw);
   } catch {
-    return NextResponse.json(
-      { error: "Could not read this PDF. It may be scanned or corrupted." },
-      { status: 422 },
-    );
+    return undefined;
   }
 }

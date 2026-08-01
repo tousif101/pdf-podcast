@@ -4,11 +4,7 @@ import { getStore } from "@/lib/store";
 import { getSessionUser } from "@/lib/auth";
 import { creditCost, getBalance, refundEpisode, spendCredits } from "@/lib/credits";
 import { normalizeOptions } from "@/lib/options";
-import {
-  extractPdfText,
-  looksLikePdf,
-  validatePdfFile,
-} from "@/lib/pipeline/extract";
+import { readUploads } from "@/lib/pipeline/extract";
 import { ACTIVE_STATUSES } from "@/components/format";
 import { generateEpisode } from "@/workflows/generate-episode";
 import type { Episode } from "@/lib/types";
@@ -42,19 +38,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Sign in required" }, { status: 401 });
   }
   const form = await request.formData();
-  const check = validatePdfFile(form.get("file"));
-  if (!check.ok) {
-    return NextResponse.json({ error: check.error }, { status: check.status });
-  }
-  const file = check.file;
-  const data = new Uint8Array(await file.arrayBuffer());
-  if (!looksLikePdf(data, file.name)) {
-    return NextResponse.json(
-      { error: "Only PDF files are supported" },
-      { status: 415 },
-    );
-  }
-
   const modeField = form.get("mode");
   const mode = modeField === "reading" ? "reading" : "conversation";
   const optionsRaw = form.get("options");
@@ -74,21 +57,13 @@ export async function POST(request: Request) {
     }
   }
 
-  let extractedChars: number;
-  try {
-    // PDF.js transfers (detaches) the buffer it's given — extract from a copy
-    // so `data` stays usable for saveSource below.
-    const { text } = await extractPdfText(new Uint8Array(data));
-    extractedChars = text.length;
-  } catch {
-    return NextResponse.json(
-      { error: "Could not read this PDF. It may be scanned or corrupted." },
-      { status: 422 },
-    );
+  const upload = await readUploads(form.getAll("file"));
+  if (!upload.ok) {
+    return NextResponse.json({ error: upload.error }, { status: upload.status });
   }
 
   const episodeId = crypto.randomUUID();
-  const cost = creditCost(mode, extractedChars, options.length);
+  const cost = creditCost(mode, upload.chars, options.length);
   if (!user.isAdmin) {
     const ok = await spendCredits(user.id, cost, episodeId);
     if (!ok) {
@@ -103,15 +78,16 @@ export async function POST(request: Request) {
   const episode: Episode = {
     id: episodeId,
     userId: user.id,
-    title: file.name.replace(/\.pdf$/i, "").replace(/[-_]+/g, " "),
-    sourceFilename: file.name,
+    title: upload.sourceFilename.replace(/\.pdf$/i, "").replace(/[-_]+/g, " "),
+    sourceFilename: upload.sourceFilename,
     mode,
     options,
+    totalPages: upload.totalPages,
     status: "pending",
     createdAt: new Date().toISOString(),
   };
   try {
-    await store.saveSource(episode.id, data);
+    await store.saveSourceText(episode.id, upload.text);
     await store.create(episode);
     await start(generateEpisode, [episode.id, options.reviewScript]);
   } catch (err) {

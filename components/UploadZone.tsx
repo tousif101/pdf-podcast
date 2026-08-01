@@ -14,12 +14,12 @@ import { isSingleVoiceFormat, normalizeOptions } from "@/lib/options";
 
 interface UploadZoneProps {
   onQuote: (
-    file: File,
+    files: File[],
     mode: EpisodeMode,
     options: EpisodeOptions,
   ) => Promise<UploadQuote>;
   onConfirm: (
-    file: File,
+    files: File[],
     mode: EpisodeMode,
     options: EpisodeOptions,
   ) => Promise<void>;
@@ -132,7 +132,7 @@ export default function UploadZone({
     normalizeOptions({}),
   );
   const [pending, setPending] = useState<{
-    file: File;
+    files: File[];
     quote: UploadQuote;
   } | null>(null);
 
@@ -141,20 +141,22 @@ export default function UploadZone({
 
   const singleVoice = isSingleVoiceFormat(options.format);
 
-  const handleFile = async (file: File | null | undefined) => {
-    if (!file || busy) return;
-    const isPdf =
-      file.type === "application/pdf" ||
-      file.name.toLowerCase().endsWith(".pdf");
-    if (!isPdf) {
+  const handleFiles = async (list: FileList | null | undefined) => {
+    const files = list ? Array.from(list) : [];
+    if (files.length === 0 || busy) return;
+    const allPdf = files.every(
+      (f) =>
+        f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf"),
+    );
+    if (!allPdf) {
       setError("Only PDF files are supported.");
       return;
     }
     setBusy(true);
     setError(null);
     try {
-      const quote = await onQuote(file, mode, options);
-      setPending({ file, quote });
+      const quote = await onQuote(files, mode, options);
+      setPending({ files, quote });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not read the PDF.");
     } finally {
@@ -168,7 +170,7 @@ export default function UploadZone({
     setBusy(true);
     setError(null);
     try {
-      await onConfirm(pending.file, mode, options);
+      await onConfirm(pending.files, mode, options);
       setPending(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed.");
@@ -180,11 +182,15 @@ export default function UploadZone({
   const selectedMode = MODES.find((m) => m.value === mode) ?? MODES[0];
 
   if (pending) {
-    const { quote, file } = pending;
+    const { quote, files } = pending;
     const affordable = quote.isAdmin || (quote.balance ?? 0) >= quote.cost;
+    const label =
+      files.length === 1
+        ? files[0].name
+        : `${files.length} documents`;
     return (
       <div className="rounded-2xl border border-violet-500/40 bg-violet-500/5 px-5 py-5">
-        <p className="truncate font-medium text-zinc-100">{file.name}</p>
+        <p className="truncate font-medium text-zinc-100">{label}</p>
         <p className="mt-1 text-sm text-zinc-400">
           {quote.pages} {quote.pages === 1 ? "page" : "pages"} · ≈
           {quote.estMinutes} min · {selectedMode.label.toLowerCase()}
@@ -347,7 +353,7 @@ export default function UploadZone({
         onDrop={(event) => {
           event.preventDefault();
           setDragActive(false);
-          void handleFile(event.dataTransfer.files?.[0]);
+          void handleFiles(event.dataTransfer.files);
         }}
         disabled={busy}
         aria-label="Upload a PDF to create a podcast episode"
@@ -380,18 +386,21 @@ export default function UploadZone({
           )}
         </span>
         <span className="mt-3 block font-medium text-zinc-100">
-          {busy ? "Reading PDF…" : "Upload a PDF"}
+          {busy ? "Reading PDFs…" : "Upload PDFs"}
         </span>
         <span className="mt-1 block text-sm text-zinc-400">
-          {busy ? "Calculating episode price" : selectedMode.hint}
+          {busy
+            ? "Calculating episode price"
+            : `${selectedMode.hint} · one or several PDFs`}
         </span>
       </button>
       <input
         ref={inputRef}
         type="file"
         accept="application/pdf,.pdf"
+        multiple
         className="hidden"
-        onChange={(event) => void handleFile(event.target.files?.[0])}
+        onChange={(event) => void handleFiles(event.target.files)}
       />
       {error && (
         <p role="alert" className="mt-3 text-sm text-red-400">

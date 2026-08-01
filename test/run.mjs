@@ -29,6 +29,7 @@ const SUITE = [
   "test/unit/script-edit.test.ts",
   "test/unit/feed.test.ts",
   "test/unit/share.test.ts",
+  "test/unit/multi-pdf.test.ts",
   "test/unit/billing.test.ts",
   "test/unit/auth.test.ts",
   "test/unit/script.test.ts",

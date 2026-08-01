@@ -1,0 +1,16 @@
+{
+  "eventType": "step_completed",
+  "specVersion": 3,
+  "correlationId": "step_01KYXDX41YBCA1SBEY5VZMVQ3H",
+  "eventData": {
+    "stepName": "step//./workflows/generate-episode//synthesizeStep",
+    "workflowName": "workflow//./workflows/generate-episode//generateEpisode",
+    "result": {
+      "__type": "Uint8Array",
+      "data": "ZGV2bC0x"
+    }
+  },
+  "runId": "wrun_01KYXDX41QHQNXNPWXSV25V81Q",
+  "eventId": "evnt_01KYXDX4V2WTTW94ZD7J7Y7A59",
+  "createdAt": "2026-08-01T01:09:36.738Z"
+}

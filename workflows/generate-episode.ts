@@ -44,20 +44,25 @@ async function extractStep(episodeId: string): Promise<string> {
   const { extractPdfText } = await import("@/lib/pipeline/extract");
 
   const store = getStore();
-  if (!(await store.patch(episodeId, { status: "extracting" }))) {
-    throw new FatalError("Episode was deleted");
-  }
+  const episode = await store.patch(episodeId, { status: "extracting" });
+  if (!episode) throw new FatalError("Episode was deleted");
 
-  const source = await store.getSource(episodeId);
-  if (!source) throw new FatalError("Source PDF is missing");
-
+  // New episodes store pre-extracted (possibly multi-PDF) text; fall back to
+  // extracting a raw PDF for any legacy episode.
   let text: string;
   let totalPages: number;
-  try {
-    ({ text, totalPages } = await extractPdfText(source));
-  } catch (err) {
-    // Un-parseable/empty PDFs will never succeed on retry.
-    throw new FatalError(err instanceof Error ? err.message : String(err));
+  const storedText = await store.getSourceText(episodeId);
+  if (storedText !== null) {
+    text = storedText;
+    totalPages = episode.totalPages ?? 0;
+  } else {
+    const source = await store.getSource(episodeId);
+    if (!source) throw new FatalError("Source is missing");
+    try {
+      ({ text, totalPages } = await extractPdfText(source));
+    } catch (err) {
+      throw new FatalError(err instanceof Error ? err.message : String(err));
+    }
   }
   await store.patch(episodeId, {
     totalPages,
