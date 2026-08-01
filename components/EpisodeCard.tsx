@@ -3,8 +3,14 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Episode, EpisodeStatus } from "@/lib/types";
-import { STATUS_LABELS, formatDate, formatTime, styleLabel } from "./format";
-import { usePlayer } from "./PlayerProvider";
+import {
+  STATUS_LABELS,
+  formatDate,
+  formatTime,
+  friendlyErrorMessage,
+  styleLabel,
+} from "./format";
+import { getResumeSeconds, usePlayer } from "./PlayerProvider";
 import DownloadButton from "./DownloadButton";
 import ShareButton from "./ShareButton";
 import PlayButton from "./ui/PlayButton";
@@ -121,6 +127,24 @@ export default function EpisodeCard({
     [],
   );
 
+  // Offline status must be visible without opening the overflow menu.
+  useEffect(() => {
+    if (episode.status !== "ready" || !("caches" in window)) return;
+    let cancelled = false;
+    caches
+      .open("episode-audio")
+      .then((cache) =>
+        cache.match(`/api/episodes/${episode.id}/audio`, { ignoreSearch: true }),
+      )
+      .then((hit) => {
+        if (!cancelled && hit) setDownloaded(true);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [episode.id, episode.status]);
+
   const isReady = episode.status === "ready";
   const isError = episode.status === "error";
   const needsReview = episode.status === "script_ready";
@@ -223,8 +247,7 @@ export default function EpisodeCard({
         <div className="min-w-0 flex-1">
           {title}
           <p className="mt-0.5 text-[12.5px] leading-snug text-signal-ink">
-            {episode.error || "Something went wrong making this episode."}{" "}
-            Credit refunded.
+            {friendlyErrorMessage(episode.error)} Credit refunded.
           </p>
         </div>
         <button
@@ -243,14 +266,30 @@ export default function EpisodeCard({
     );
   }
 
+  const resumeSeconds = isCurrent ? 0 : getResumeSeconds(episode.id);
+  const totalSeconds = episode.durationSeconds;
   const meta = [
-    typeof episode.durationSeconds === "number"
-      ? formatTime(episode.durationSeconds)
+    typeof totalSeconds === "number"
+      ? resumeSeconds > 0
+        ? `${formatTime(Math.max(0, totalSeconds - resumeSeconds))} left`
+        : formatTime(totalSeconds)
       : null,
     styleLabel(episode),
     formatDate(episode.createdAt),
     downloaded ? "downloaded" : null,
   ].filter(Boolean);
+
+  const playerRemaining = Math.max(0, player.duration - player.currentTime);
+  const metaLine = isCurrent ? (
+    <span className="mt-0.5 block truncate font-mono text-[11.5px] text-signal">
+      {player.playing ? "Playing" : "Paused"} ·{" "}
+      {formatTime(playerRemaining)} left
+    </span>
+  ) : (
+    <span className="mt-0.5 block truncate font-mono text-[11.5px] text-ink-4">
+      {meta.join(" · ")}
+    </span>
+  );
 
   return (
     <li className={`${shell} flex items-center gap-3 p-[13px] lg:gap-4 lg:px-[18px] lg:py-[15px]`}>
@@ -274,9 +313,7 @@ export default function EpisodeCard({
         className="min-w-0 flex-1 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
       >
         {title}
-        <span className="mt-0.5 block truncate font-mono text-[11.5px] text-ink-4">
-          {meta.join(" · ")}
-        </span>
+        {metaLine}
       </button>
       {episode.script && episode.script.lines.length > 0 && (
         <Link

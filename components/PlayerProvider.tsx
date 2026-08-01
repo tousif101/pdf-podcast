@@ -31,7 +31,9 @@ function readSavedSpeed(): number {
   }
 }
 
-function readResumePosition(episodeId: string): number {
+/** Saved resume position for an episode, 0 when none. Safe on the server. */
+export function getResumeSeconds(episodeId: string): number {
+  if (typeof window === "undefined") return 0;
   try {
     const raw = localStorage.getItem(RESUME_KEY_PREFIX + episodeId);
     const value = raw ? Number(raw) : NaN;
@@ -91,11 +93,19 @@ export function usePlayer(): PlayerContextValue {
   return value;
 }
 
+interface PendingSeek {
+  episodeId: string;
+  seconds: number;
+  /** Resume seeks are skipped near the end; explicit seeks always apply. */
+  fromResume: boolean;
+}
+
 export default function PlayerProvider({ children }: { children: ReactNode }) {
   const audioRef = useRef<HTMLAudioElement>(null);
+  const episodeRef = useRef<Episode | null>(null);
   const lastSavedRef = useRef(0);
-  const restoredRef = useRef(false);
-  const pendingSeekRef = useRef<number | null>(null);
+  const restoredRef = useRef(true);
+  const pendingSeekRef = useRef<PendingSeek | null>(null);
   const [episode, setEpisode] = useState<Episode | null>(null);
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -104,6 +114,20 @@ export default function PlayerProvider({ children }: { children: ReactNode }) {
   const [speed, setSpeed] = useState(() =>
     typeof window === "undefined" ? 1 : readSavedSpeed(),
   );
+  const speedRef = useRef(speed);
+
+  const persistPosition = useCallback(() => {
+    const audio = audioRef.current;
+    const current = episodeRef.current;
+    if (
+      audio &&
+      current &&
+      audio.currentTime > RESUME_MIN_S &&
+      !audio.ended
+    ) {
+      writeResumePosition(current.id, audio.currentTime);
+    }
+  }, []);
 
   const seekTo = useCallback((time: number, useFastSeek = false) => {
     const audio = audioRef.current;
@@ -140,37 +164,75 @@ export default function PlayerProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Called from click handlers; audio.play() must run synchronously here so
+  // strict autoplay policies (Safari) see it inside the user gesture.
   const play = useCallback(
     (next: Episode, atSeconds?: number) => {
-      setEpisode((current) => {
-        if (current?.id === next.id) {
-          if (typeof atSeconds === "number") seekTo(atSeconds);
-          else toggle();
-          return current;
+      const audio = audioRef.current;
+      const current = episodeRef.current;
+      if (current?.id === next.id) {
+        if (typeof atSeconds === "number") {
+          seekTo(atSeconds);
+          if (audio?.paused) audio.play().catch(() => {});
+        } else {
+          toggle();
         }
-        pendingSeekRef.current = typeof atSeconds === "number" ? atSeconds : null;
-        restoredRef.current = false;
-        lastSavedRef.current = 0;
-        setPlaying(false);
-        setCurrentTime(typeof atSeconds === "number" ? atSeconds : 0);
-        setDuration(next.durationSeconds ?? 0);
-        return next;
-      });
+        return;
+      }
+
+      persistPosition();
+      const target =
+        typeof atSeconds === "number" ? atSeconds : getResumeSeconds(next.id);
+      pendingSeekRef.current =
+        target > 0
+          ? {
+              episodeId: next.id,
+              seconds: target,
+              fromResume: typeof atSeconds !== "number",
+            }
+          : null;
+      restoredRef.current = pendingSeekRef.current === null;
+      lastSavedRef.current = 0;
+      episodeRef.current = next;
+      setEpisode(next);
+      setPlaying(false);
+      setCurrentTime(target > 0 ? target : 0);
+      setDuration(next.durationSeconds ?? 0);
+
+      if (audio) {
+        audio.src = `/api/episodes/${next.id}/audio`;
+        audio.playbackRate = speedRef.current;
+        audio.load();
+        audio.play().catch(() => {
+          // Playback can still be refused (e.g. network); UI stays paused so
+          // the next tap retries inside a fresh gesture.
+        });
+      }
     },
-    [seekTo, toggle],
+    [persistPosition, seekTo, toggle],
   );
 
   const close = useCallback(() => {
+    persistPosition();
+    const audio = audioRef.current;
+    if (audio) {
+      audio.pause();
+      audio.removeAttribute("src");
+      audio.load();
+    }
+    episodeRef.current = null;
+    pendingSeekRef.current = null;
     setExpanded(false);
     setEpisode(null);
     setPlaying(false);
     setCurrentTime(0);
     setDuration(0);
-  }, []);
+  }, [persistPosition]);
 
   const cycleSpeed = useCallback(() => {
     setSpeed((current) => {
       const next = SPEEDS[(SPEEDS.indexOf(current) + 1) % SPEEDS.length];
+      speedRef.current = next;
       if (audioRef.current) audioRef.current.playbackRate = next;
       try {
         localStorage.setItem(SPEED_KEY, String(next));
@@ -192,58 +254,6 @@ export default function PlayerProvider({ children }: { children: ReactNode }) {
       position: Math.min(audio.currentTime, audio.duration),
     });
   }, []);
-
-  const episodeId = episode?.id ?? null;
-
-  const speedRefValue = useRef(speed);
-  useEffect(() => {
-    speedRefValue.current = speed;
-  }, [speed]);
-
-  // The audio element remounts per episode (key={episode.id}), so playback
-  // starts once per episode, continuing from a pending or saved position.
-  useEffect(() => {
-    if (!episodeId) return;
-    const audio = audioRef.current;
-    if (!audio) return;
-    audio.playbackRate = speedRefValue.current;
-    const pending = pendingSeekRef.current;
-    pendingSeekRef.current = null;
-    const saved = pending ?? readResumePosition(episodeId);
-    if (saved > 0) {
-      // Seeking before metadata loads is unreliable; apply on both paths.
-      const apply = () => {
-        if (restoredRef.current) return;
-        if (
-          pending !== null ||
-          (Number.isFinite(audio.duration) &&
-            saved < audio.duration - RESUME_END_MARGIN_S)
-        ) {
-          audio.currentTime = saved;
-          setCurrentTime(saved);
-        }
-        restoredRef.current = true;
-      };
-      if (audio.readyState >= 1) apply();
-      else audio.addEventListener("loadedmetadata", apply, { once: true });
-    } else {
-      restoredRef.current = true;
-    }
-    audio.play().catch(() => {
-      // Autoplay can be blocked; the user can press play manually.
-    });
-  }, [episodeId]);
-
-  // Persist position when switching episodes or closing the player.
-  useEffect(() => {
-    if (!episodeId) return;
-    const audio = audioRef.current;
-    return () => {
-      if (audio && audio.currentTime > RESUME_MIN_S && !audio.ended) {
-        writeResumePosition(episodeId, audio.currentTime);
-      }
-    };
-  }, [episodeId]);
 
   useEffect(() => {
     if (!episode || !("mediaSession" in navigator)) return;
@@ -311,6 +321,12 @@ export default function PlayerProvider({ children }: { children: ReactNode }) {
     };
   }, [hasEpisode, seekTo]);
 
+  // Persist the position when the tab is backgrounded or closed.
+  useEffect(() => {
+    window.addEventListener("pagehide", persistPosition);
+    return () => window.removeEventListener("pagehide", persistPosition);
+  }, [persistPosition]);
+
   const setSessionPlaybackState = (state: MediaSessionPlaybackState) => {
     if ("mediaSession" in navigator) {
       navigator.mediaSession.playbackState = state;
@@ -352,50 +368,63 @@ export default function PlayerProvider({ children }: { children: ReactNode }) {
   return (
     <PlayerContext.Provider value={value}>
       {children}
-      {episode && (
-        <>
-          <Player />
-          <audio
-            key={episode.id}
-            ref={audioRef}
-            src={`/api/episodes/${episode.id}/audio`}
-            preload="metadata"
-            onPlay={(event) => {
-              event.currentTarget.playbackRate = speed;
-              setPlaying(true);
-              setSessionPlaybackState("playing");
-            }}
-            onPause={() => {
-              setPlaying(false);
-              setSessionPlaybackState("paused");
-            }}
-            onEnded={() => {
-              setPlaying(false);
-              setSessionPlaybackState("paused");
-              clearResumePosition(episode.id);
-            }}
-            onTimeUpdate={(event) => {
-              const time = event.currentTarget.currentTime;
-              setCurrentTime(time);
-              updatePositionState();
-              if (
-                restoredRef.current &&
-                time > RESUME_MIN_S &&
-                Math.abs(time - lastSavedRef.current) >= RESUME_SAVE_INTERVAL_S
-              ) {
-                lastSavedRef.current = time;
-                writeResumePosition(episode.id, time);
-              }
-            }}
-            onDurationChange={(event) => {
-              const value = event.currentTarget.duration;
-              if (Number.isFinite(value)) setDuration(value);
-              updatePositionState();
-            }}
-            onRateChange={updatePositionState}
-          />
-        </>
-      )}
+      {episode && <Player />}
+      <audio
+        ref={audioRef}
+        preload="metadata"
+        onLoadedMetadata={(event) => {
+          const audio = event.currentTarget;
+          const pending = pendingSeekRef.current;
+          if (pending && pending.episodeId === episodeRef.current?.id) {
+            const applies =
+              !pending.fromResume ||
+              (Number.isFinite(audio.duration) &&
+                pending.seconds < audio.duration - RESUME_END_MARGIN_S);
+            if (applies) {
+              audio.currentTime = pending.seconds;
+              setCurrentTime(pending.seconds);
+            }
+          }
+          pendingSeekRef.current = null;
+          restoredRef.current = true;
+        }}
+        onPlay={(event) => {
+          event.currentTarget.playbackRate = speedRef.current;
+          setPlaying(true);
+          setSessionPlaybackState("playing");
+        }}
+        onPause={() => {
+          setPlaying(false);
+          setSessionPlaybackState("paused");
+        }}
+        onEnded={() => {
+          setPlaying(false);
+          setSessionPlaybackState("paused");
+          const current = episodeRef.current;
+          if (current) clearResumePosition(current.id);
+        }}
+        onTimeUpdate={(event) => {
+          const time = event.currentTarget.currentTime;
+          setCurrentTime(time);
+          updatePositionState();
+          const current = episodeRef.current;
+          if (
+            current &&
+            restoredRef.current &&
+            time > RESUME_MIN_S &&
+            Math.abs(time - lastSavedRef.current) >= RESUME_SAVE_INTERVAL_S
+          ) {
+            lastSavedRef.current = time;
+            writeResumePosition(current.id, time);
+          }
+        }}
+        onDurationChange={(event) => {
+          const value = event.currentTarget.duration;
+          if (Number.isFinite(value)) setDuration(value);
+          updatePositionState();
+        }}
+        onRateChange={updatePositionState}
+      />
     </PlayerContext.Provider>
   );
 }

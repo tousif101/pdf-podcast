@@ -53,6 +53,17 @@ export function formatTotalDuration(totalSeconds: number): string {
   return `${minutes}m`;
 }
 
+/** Strips workflow-step prefixes and maps provider errors to plain English. */
+export function friendlyErrorMessage(raw: string | undefined): string {
+  const stripped = (raw ?? "")
+    .replace(/^Step\s+"[^"]*"\s+failed(?:\s+after\s+\d+\s+retries)?:\s*/i, "")
+    .trim();
+  if (/429|rate limit|quota|resource.?exhausted/i.test(stripped)) {
+    return "The voice service is at its daily limit right now — try again in a few hours.";
+  }
+  return stripped || "Something went wrong making this episode.";
+}
+
 export function formatDate(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";

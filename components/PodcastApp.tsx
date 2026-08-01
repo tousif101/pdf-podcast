@@ -9,9 +9,10 @@ import type {
   UploadQuote,
 } from "@/lib/types";
 import { ACTIVE_STATUSES, formatTotalDuration } from "./format";
-import { usePlayer } from "./PlayerProvider";
+import { getResumeSeconds, usePlayer } from "./PlayerProvider";
 import UploadZone, { type ComposerApi } from "./UploadZone";
 import EpisodeCard from "./EpisodeCard";
+import ContinueCard from "./ContinueCard";
 import BuyCredits from "./BuyCredits";
 import FeedButton from "./FeedButton";
 import Mark from "./ui/Mark";
@@ -297,6 +298,12 @@ export default function PodcastApp({ userEmail, onSignOut }: PodcastAppProps) {
   );
   const initial = (userEmail[0] ?? "?").toUpperCase();
 
+  // The card shows what's playing, or where to pick back up.
+  const continueEpisode =
+    (playingEpisodeId
+      ? readyEpisodes.find((e) => e.id === playingEpisodeId)
+      : readyEpisodes.find((e) => getResumeSeconds(e.id) > 0)) ?? null;
+
   return (
     <div
       className={`flex flex-1 flex-col ${
@@ -335,6 +342,7 @@ export default function PodcastApp({ userEmail, onSignOut }: PodcastAppProps) {
                   type="button"
                   onClick={() => setShowBuy(true)}
                   aria-label={`${credits.balance} credits — buy more`}
+                  title="1 credit ≈ one episode. Tap to top up."
                   className="rounded-full bg-paper-2 px-3 py-1.5 font-mono text-[12px] text-ink-3 transition-colors hover:bg-line focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
                 >
                   {credits.balance} credit{credits.balance === 1 ? "" : "s"}
@@ -427,16 +435,23 @@ export default function PodcastApp({ userEmail, onSignOut }: PodcastAppProps) {
                 </button>
               </div>
             ) : (
-              <ul className="mt-5 space-y-3">
-                {episodes.map((episode) => (
-                  <EpisodeCard
-                    key={episode.id}
-                    episode={episode}
-                    onDelete={() => void handleDelete(episode.id)}
-                    onTryAnother={openComposer}
-                  />
-                ))}
-              </ul>
+              <>
+                {continueEpisode && (
+                  <div className="mt-5">
+                    <ContinueCard episode={continueEpisode} />
+                  </div>
+                )}
+                <ul className="mt-3 space-y-3">
+                  {episodes.map((episode) => (
+                    <EpisodeCard
+                      key={episode.id}
+                      episode={episode}
+                      onDelete={() => void handleDelete(episode.id)}
+                      onTryAnother={openComposer}
+                    />
+                  ))}
+                </ul>
+              </>
             )}
 
             {loadError && episodes !== null && (
@@ -493,6 +508,12 @@ export default function PodcastApp({ userEmail, onSignOut }: PodcastAppProps) {
       >
         <Eyebrow className="mb-1">Account</Eyebrow>
         <p className="truncate font-mono text-[12px] text-ink-3">{userEmail}</p>
+        {credits && !credits.isAdmin && (
+          <p className="mt-2 text-[12.5px] leading-[1.5] text-ink-4">
+            {credits.balance} credit{credits.balance === 1 ? "" : "s"} left · 1
+            credit ≈ one episode, or 25 minutes of read-aloud.
+          </p>
+        )}
         <div className="mt-5 space-y-3 border-t border-line-2 pt-5">
           <FeedButton />
           <Link
