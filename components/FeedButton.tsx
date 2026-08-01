@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import Sheet from "./ui/Sheet";
+import Spinner from "./ui/Spinner";
 
 export default function FeedButton() {
   const [open, setOpen] = useState(false);
@@ -45,89 +47,50 @@ export default function FeedButton() {
       <button
         type="button"
         onClick={() => void openSheet()}
-        className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-2.5 text-sm text-zinc-300 hover:border-zinc-600"
+        className="block py-1 text-left text-[13px] font-medium text-ink-3 transition-colors hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
       >
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          className="h-4 w-4 text-violet-400"
-          aria-hidden="true"
-        >
-          <path d="M4 11a9 9 0 0 1 9 9M4 4a16 16 0 0 1 16 16" />
-          <circle cx="5" cy="19" r="1.5" fill="currentColor" />
-        </svg>
         Subscribe in a podcast app
       </button>
 
-      {open && (
-        <div
-          className="fixed inset-0 z-30 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Podcast feed"
-          onClick={() => setOpen(false)}
-        >
-          <div
-            className="w-full max-w-md rounded-t-3xl border border-zinc-800 bg-zinc-950 p-6 sm:rounded-3xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-zinc-50">
-                Your private podcast feed
-              </h2>
+      <Sheet
+        open={open}
+        onClose={() => setOpen(false)}
+        aria-label="Podcast feed"
+      >
+        <h2 className="font-display text-[26px] leading-[1.1] text-ink">
+          Your private feed
+        </h2>
+        <p className="mt-2 text-[13.5px] leading-[1.55] text-ink-2">
+          Add this URL in Apple Podcasts, Pocket Casts, or any app (Add a show
+          by URL). New episodes appear automatically. Keep it private — anyone
+          with the link can listen.
+        </p>
+
+        {busy ? (
+          <div className="mt-5 flex items-center gap-2 text-[13px] text-ink-3">
+            <Spinner className="size-3.5" /> Loading…
+          </div>
+        ) : error ? (
+          <p className="mt-5 text-[13px] text-signal-ink" role="alert">
+            {error}
+          </p>
+        ) : (
+          url && (
+            <div className="mt-5 flex items-center gap-2 rounded-2xl border border-line bg-paper-3 p-2">
+              <span className="min-w-0 flex-1 truncate px-2 font-mono text-[11px] text-ink-3">
+                {url}
+              </span>
               <button
                 type="button"
-                onClick={() => setOpen(false)}
-                aria-label="Close"
-                className="rounded-full p-1.5 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
+                onClick={() => void copy()}
+                className="shrink-0 rounded-full bg-paper-2 px-[14px] py-2 text-[12.5px] font-medium text-ink-2 transition-colors hover:bg-line focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
               >
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  className="h-4 w-4"
-                  aria-hidden="true"
-                >
-                  <path d="M6 6l12 12M18 6 6 18" />
-                </svg>
+                {copied ? "Copied" : "Copy"}
               </button>
             </div>
-            <p className="mt-1 text-sm text-zinc-400">
-              Add this URL in Apple Podcasts, Pocket Casts, or any app (Add a
-              show by URL). New episodes appear automatically. Keep it private —
-              anyone with the link can listen.
-            </p>
-
-            {busy ? (
-              <p className="mt-5 text-sm text-zinc-500">Loading…</p>
-            ) : error ? (
-              <p className="mt-5 text-sm text-red-400">{error}</p>
-            ) : (
-              url && (
-                <div className="mt-5">
-                  <div className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900/60 p-2">
-                    <span className="min-w-0 flex-1 truncate px-1 text-xs text-zinc-400">
-                      {url}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => void copy()}
-                      className="shrink-0 rounded-lg bg-violet-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-violet-400"
-                    >
-                      {copied ? "Copied" : "Copy"}
-                    </button>
-                  </div>
-                </div>
-              )
-            )}
-          </div>
-        </div>
-      )}
+          )
+        )}
+      </Sheet>
     </>
   );
 }

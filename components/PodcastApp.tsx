@@ -1,19 +1,23 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   Episode,
   EpisodeMode,
   EpisodeOptions,
-  PodcastScript,
   UploadQuote,
 } from "@/lib/types";
-import { ACTIVE_STATUSES } from "./format";
-import UploadZone from "./UploadZone";
+import { ACTIVE_STATUSES, formatTotalDuration } from "./format";
+import { usePlayer } from "./PlayerProvider";
+import UploadZone, { type ComposerApi } from "./UploadZone";
 import EpisodeCard from "./EpisodeCard";
-import Player from "./Player";
 import BuyCredits from "./BuyCredits";
 import FeedButton from "./FeedButton";
+import Mark from "./ui/Mark";
+import Button from "./ui/Button";
+import Sheet from "./ui/Sheet";
+import Eyebrow from "./ui/Eyebrow";
 
 const POLL_INTERVAL_MS = 2500;
 const RECENT_EPISODE_WINDOW_MS = 2 * 60 * 1000;
@@ -23,19 +27,48 @@ interface PodcastAppProps {
   onSignOut: () => void;
 }
 
+function readPurchaseNote(): string | null {
+  if (typeof window === "undefined") return null;
+  const purchase = new URLSearchParams(window.location.search).get("purchase");
+  if (purchase === "success") return "Payment received — credits are on the way.";
+  if (purchase === "cancelled") return "Checkout cancelled — no charge was made.";
+  return null;
+}
+
+function SkeletonRow() {
+  return (
+    <li className="flex animate-pulse items-center gap-3 rounded-2xl border border-line bg-card p-[13px] lg:gap-4 lg:px-[18px] lg:py-[15px]">
+      <span className="size-10 shrink-0 rounded-full bg-paper-2 lg:size-11" />
+      <span className="min-w-0 flex-1 space-y-2">
+        <span className="block h-4 w-2/3 rounded bg-paper-2" />
+        <span className="block h-3 w-1/3 rounded bg-paper-2" />
+      </span>
+    </li>
+  );
+}
+
 export default function PodcastApp({ userEmail, onSignOut }: PodcastAppProps) {
+  const player = usePlayer();
+  const playingEpisodeId = player.episode?.id ?? null;
+  const closePlayer = player.close;
   const [episodes, setEpisodes] = useState<Episode[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [playingId, setPlayingId] = useState<string | null>(null);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [credits, setCredits] = useState<{
     balance: number | null;
     isAdmin: boolean;
   } | null>(null);
 
   const [showBuy, setShowBuy] = useState(false);
-  const [purchaseNote, setPurchaseNote] = useState<string | null>(null);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [sampleBusy, setSampleBusy] = useState(false);
+  const [purchaseNote, setPurchaseNote] = useState<string | null>(
+    readPurchaseNote,
+  );
+  const composerApiRef = useRef<ComposerApi | null>(null);
+  const registerComposerApi = useCallback((api: ComposerApi) => {
+    composerApiRef.current = api;
+  }, []);
 
   const refreshCredits = useCallback(() => {
     fetch("/api/credits", { cache: "no-store" })
@@ -58,7 +91,6 @@ export default function PodcastApp({ userEmail, onSignOut }: PodcastAppProps) {
     if (!purchase) return;
     window.history.replaceState({}, "", window.location.pathname);
     if (purchase === "success") {
-      setPurchaseNote("Payment received — credits are on the way.");
       const timers = [2000, 5000, 10000].map((ms) =>
         setTimeout(refreshCredits, ms),
       );
@@ -66,11 +98,18 @@ export default function PodcastApp({ userEmail, onSignOut }: PodcastAppProps) {
       return () => [...timers, clear].forEach(clearTimeout);
     }
     if (purchase === "cancelled") {
-      setPurchaseNote("Checkout cancelled — no charge was made.");
       const clear = setTimeout(() => setPurchaseNote(null), 6000);
       return () => clearTimeout(clear);
     }
   }, [refreshCredits]);
+
+  // Lift the mobile mini player above the fixed "+ Add a PDF" pill.
+  useEffect(() => {
+    document.documentElement.style.setProperty("--mini-lift", "72px");
+    return () => {
+      document.documentElement.style.removeProperty("--mini-lift");
+    };
+  }, []);
 
   const requestSeqRef = useRef(0);
   const appliedSeqRef = useRef(0);
@@ -202,31 +241,6 @@ export default function PodcastApp({ userEmail, onSignOut }: PodcastAppProps) {
     [refreshCredits],
   );
 
-  const handleReviewSubmit = useCallback(
-    async (id: string, script: PodcastScript) => {
-      const res = await fetch(`/api/episodes/${id}/script`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(script),
-      });
-      if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as {
-          error?: string;
-        } | null;
-        throw new Error(body?.error ?? `Could not save script (${res.status}).`);
-      }
-      // Optimistically move it out of review so the editor closes immediately.
-      setEpisodes((prev) =>
-        prev
-          ? prev.map((e) =>
-              e.id === id ? { ...e, status: "synthesizing", script } : e,
-            )
-          : prev,
-      );
-    },
-    [],
-  );
-
   const handleDelete = useCallback(
     async (id: string) => {
       if (!window.confirm("Delete this episode? This cannot be undone.")) {
@@ -240,8 +254,7 @@ export default function PodcastApp({ userEmail, onSignOut }: PodcastAppProps) {
         setEpisodes((prev) =>
           prev ? prev.filter((episode) => episode.id !== id) : prev,
         );
-        setPlayingId((current) => (current === id ? null : current));
-        setExpandedId((current) => (current === id ? null : current));
+        if (playingEpisodeId === id) closePlayer();
         if ("caches" in window) {
           const cache = await caches.open("episode-audio");
           await cache
@@ -252,147 +265,247 @@ export default function PodcastApp({ userEmail, onSignOut }: PodcastAppProps) {
         setActionError("Could not delete the episode. Please try again.");
       }
     },
-    [],
+    [playingEpisodeId, closePlayer],
   );
 
-  const playingEpisode =
-    episodes?.find(
-      (episode) => episode.id === playingId && episode.status === "ready",
-    ) ?? null;
+  const openComposer = useCallback(() => {
+    composerApiRef.current?.openPicker();
+  }, []);
+
+  const trySample = useCallback(async () => {
+    if (sampleBusy) return;
+    setSampleBusy(true);
+    try {
+      const res = await fetch("/sample.pdf");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const file = new File([blob], "history-of-coffee.pdf", {
+        type: "application/pdf",
+      });
+      composerApiRef.current?.addFiles([file]);
+    } catch {
+      setActionError("Could not load the sample document.");
+    } finally {
+      setSampleBusy(false);
+    }
+  }, [sampleBusy]);
+
+  const readyEpisodes = episodes?.filter((e) => e.status === "ready") ?? [];
+  const totalSeconds = readyEpisodes.reduce(
+    (sum, e) => sum + (e.durationSeconds ?? 0),
+    0,
+  );
+  const initial = (userEmail[0] ?? "?").toUpperCase();
 
   return (
     <div
-      className={`flex flex-1 flex-col ${playingEpisode ? "pb-48" : "pb-12"}`}
+      className={`flex flex-1 flex-col ${
+        player.episode ? "pb-44 lg:pb-24" : "pb-28 lg:pb-12"
+      }`}
     >
-      <header className="sticky top-0 z-10 border-b border-zinc-800/80 bg-[#0a0a0a]/90 backdrop-blur">
-        <div className="mx-auto flex w-full max-w-xl items-center gap-3 px-4 py-4">
-          <span
-            className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-500/15 text-violet-400"
-            aria-hidden="true"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              className="h-5 w-5"
-            >
-              <path d="M5 10v4m3.5-7v10M12 8v8m3.5-11v14M19 10v4" />
-            </svg>
+      <header className="sticky top-0 z-10 border-b border-line bg-paper/90 backdrop-blur">
+        <div className="mx-auto flex w-full max-w-[1140px] items-center gap-2.5 px-5 py-4 lg:px-[34px]">
+          <Mark size={30} />
+          <span className="font-display text-[21px] leading-none text-ink">
+            Earshot
           </span>
-          <div className="min-w-0 flex-1">
-            <h1 className="text-lg font-semibold tracking-tight text-zinc-50">
-              PDF Podcast
-            </h1>
-            <p className="truncate text-xs text-zinc-400">{userEmail}</p>
+          <nav className="ml-6 hidden items-center gap-5 lg:flex" aria-label="Main">
+            <span className="border-b-2 border-signal pb-[3px] text-[13px] font-medium text-ink">
+              Library
+            </span>
+            <button
+              type="button"
+              onClick={() => setAccountOpen(true)}
+              className="pb-[3px] text-[13px] font-medium text-ink-3 transition-colors hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+            >
+              Account
+            </button>
+          </nav>
+          <div className="ml-auto flex items-center gap-2.5">
+            {credits &&
+              (credits.isAdmin ? (
+                <span
+                  className="rounded-full bg-paper-2 px-3 py-1.5 font-mono text-[12px] text-ink-3"
+                  aria-label="Unlimited credits"
+                >
+                  ∞
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowBuy(true)}
+                  aria-label={`${credits.balance} credits — buy more`}
+                  className="rounded-full bg-paper-2 px-3 py-1.5 font-mono text-[12px] text-ink-3 transition-colors hover:bg-line focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+                >
+                  {credits.balance} credit{credits.balance === 1 ? "" : "s"}
+                </button>
+              ))}
+            <button
+              type="button"
+              onClick={() => setAccountOpen(true)}
+              aria-label="Account"
+              className="flex size-[30px] items-center justify-center rounded-full bg-paper-2 text-[12px] font-medium text-ink-2 transition-colors hover:bg-line focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+            >
+              {initial}
+            </button>
           </div>
-          {credits &&
-            (credits.isAdmin ? (
-              <span
-                className="shrink-0 rounded-full bg-violet-500/15 px-3 py-1 text-xs font-medium text-violet-300"
-                aria-label="Unlimited credits"
-              >
-                ∞
-              </span>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setShowBuy(true)}
-                aria-label={`${credits.balance} credits — buy more`}
-                className="shrink-0 rounded-full bg-violet-500/15 px-3 py-1 text-xs font-medium text-violet-300 hover:bg-violet-500/25"
-              >
-                {credits.balance}{" "}
-                {credits.balance === 1 ? "credit" : "credits"} +
-              </button>
-            ))}
-          <button
-            type="button"
-            onClick={onSignOut}
-            className="shrink-0 rounded-lg border border-zinc-800 px-3 py-1.5 text-xs text-zinc-400 hover:border-zinc-600 hover:text-zinc-200"
-          >
-            Sign out
-          </button>
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-xl flex-1 px-4 pt-6">
+      <main className="mx-auto w-full max-w-[1140px] flex-1 px-5 pt-6 lg:px-[34px] lg:pt-8">
         {purchaseNote && (
           <p
             role="status"
-            className="mb-4 rounded-xl border border-violet-500/40 bg-violet-500/10 px-4 py-3 text-sm text-violet-200"
+            className="mb-5 rounded-2xl bg-signal-tint px-4 py-3 text-[13px] text-signal-ink"
           >
             {purchaseNote}
           </p>
         )}
-
-        <UploadZone
-          onQuote={handleQuote}
-          onConfirm={handleUpload}
-          onBuyCredits={() => setShowBuy(true)}
-        />
-
         {actionError && (
-          <p role="alert" className="mt-4 text-sm text-red-400">
+          <p role="alert" className="mb-5 text-[13px] text-signal-ink">
             {actionError}
           </p>
         )}
 
-        <section className="mt-8" aria-label="Episodes">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
-            Episodes
-          </h2>
+        <div className="lg:grid lg:grid-cols-[1fr_372px] lg:items-start lg:gap-[34px]">
+          <section aria-label="Your library">
+            <div className="flex items-baseline justify-between gap-4">
+              <h1 className="font-display text-3xl leading-[1.1] text-ink">
+                Your library
+              </h1>
+              {episodes && episodes.length > 0 && (
+                <p className="shrink-0 font-mono text-[11.5px] text-ink-4">
+                  {episodes.length} episode{episodes.length === 1 ? "" : "s"}
+                  {totalSeconds > 0 && ` · ${formatTotalDuration(totalSeconds)}`}
+                </p>
+              )}
+            </div>
 
-          {episodes === null ? (
-            <p className="mt-4 text-sm text-zinc-500" role="status">
-              {loadError ?? "Loading episodes…"}
-            </p>
-          ) : episodes.length === 0 ? (
-            <p className="mt-4 text-sm text-zinc-500">
-              No episodes yet. Upload a PDF to create your first one.
-            </p>
-          ) : (
-            <ul className="mt-4 space-y-3">
-              {episodes.map((episode) => (
-                <EpisodeCard
-                  key={episode.id}
-                  episode={episode}
-                  isCurrent={episode.id === playingId}
-                  expanded={episode.id === expandedId}
-                  onPlay={() => setPlayingId(episode.id)}
-                  onToggleExpand={() =>
-                    setExpandedId((current) =>
-                      current === episode.id ? null : episode.id,
-                    )
-                  }
-                  onDelete={() => void handleDelete(episode.id)}
-                  onReviewSubmit={(script) =>
-                    handleReviewSubmit(episode.id, script)
-                  }
-                />
-              ))}
-            </ul>
-          )}
+            {episodes === null ? (
+              <ul className="mt-5 space-y-3" role="status" aria-label="Loading episodes">
+                <SkeletonRow />
+                <SkeletonRow />
+                <SkeletonRow />
+              </ul>
+            ) : episodes.length === 0 ? (
+              <div className="mt-10 flex flex-col items-center px-4 py-8 text-center lg:py-16">
+                <span className="flex size-16 items-center justify-center rounded-[20px] bg-signal-tint text-signal">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="size-6"
+                    aria-hidden="true"
+                  >
+                    <path d="M12 16V4m0 0 4 4m-4-4L8 8" />
+                    <path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" />
+                  </svg>
+                </span>
+                <h2 className="mt-5 font-display text-[26px] leading-[1.1] text-ink">
+                  Nothing in the queue
+                </h2>
+                <p className="mt-2 max-w-[300px] text-[13.5px] leading-[1.55] text-ink-2">
+                  Add the paper, report, or chapter you&apos;ve been meaning to
+                  read. First episode takes about two minutes.
+                </p>
+                <Button
+                  onClick={openComposer}
+                  className="mt-6 min-h-[52px] w-full max-w-[280px] lg:hidden"
+                >
+                  Add a PDF
+                </Button>
+                <button
+                  type="button"
+                  onClick={() => void trySample()}
+                  disabled={sampleBusy}
+                  className="mt-4 text-[13px] font-medium text-signal-ink underline underline-offset-[3px] disabled:opacity-40"
+                >
+                  {sampleBusy ? "Loading sample…" : "Try a sample document"}
+                </button>
+              </div>
+            ) : (
+              <ul className="mt-5 space-y-3">
+                {episodes.map((episode) => (
+                  <EpisodeCard
+                    key={episode.id}
+                    episode={episode}
+                    onDelete={() => void handleDelete(episode.id)}
+                    onTryAnother={openComposer}
+                  />
+                ))}
+              </ul>
+            )}
 
-          {loadError && episodes !== null && (
-            <p className="mt-3 text-xs text-amber-400" role="status">
-              {loadError}
-            </p>
-          )}
+            {loadError && episodes !== null && (
+              <p className="mt-3 font-mono text-[11.5px] text-signal-ink" role="status">
+                {loadError}
+              </p>
+            )}
+            {loadError && episodes === null && (
+              <p className="mt-3 text-[13px] text-signal-ink" role="alert">
+                {loadError}
+              </p>
+            )}
+          </section>
 
-          {episodes?.some((e) => e.status === "ready") && <FeedButton />}
-        </section>
+          <aside className="hidden lg:block" aria-label="New episode">
+            <div className="sticky top-[84px] rounded-[20px] border border-line bg-card p-6">
+              <h2 className="mb-4 font-display text-2xl leading-[1.15] text-ink">
+                New episode
+              </h2>
+              <UploadZone
+                surface="rail"
+                onQuote={handleQuote}
+                onConfirm={handleUpload}
+                onBuyCredits={() => setShowBuy(true)}
+              />
+            </div>
+          </aside>
+        </div>
       </main>
 
-      {playingEpisode && (
-        <Player
-          key={playingEpisode.id}
-          episode={playingEpisode}
-          onClose={() => setPlayingId(null)}
-        />
-      )}
+      {/* Mobile composer: file first, then the options sheet. */}
+      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-20 flex justify-center pb-[calc(0.875rem+env(safe-area-inset-bottom))] lg:hidden">
+        <Button
+          onClick={openComposer}
+          className="pointer-events-auto min-h-[52px] shadow-[0_2px_8px_rgba(232,72,31,.28)]"
+        >
+          + Add a PDF
+        </Button>
+      </div>
+      <UploadZone
+        surface="sheet"
+        registerApi={registerComposerApi}
+        onQuote={handleQuote}
+        onConfirm={handleUpload}
+        onBuyCredits={() => setShowBuy(true)}
+      />
 
       {showBuy && <BuyCredits onClose={() => setShowBuy(false)} />}
+
+      <Sheet
+        open={accountOpen}
+        onClose={() => setAccountOpen(false)}
+        aria-label="Account"
+      >
+        <Eyebrow className="mb-1">Account</Eyebrow>
+        <p className="truncate font-mono text-[12px] text-ink-3">{userEmail}</p>
+        <div className="mt-5 space-y-3 border-t border-line-2 pt-5">
+          <FeedButton />
+          <Link
+            href="/legal"
+            className="block py-1 text-[13px] font-medium text-ink-3 transition-colors hover:text-ink"
+          >
+            Privacy &amp; Terms
+          </Link>
+          <Button variant="secondary" onClick={onSignOut} className="w-full">
+            Sign out
+          </Button>
+        </div>
+      </Sheet>
     </div>
   );
 }

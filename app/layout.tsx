@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Instrument_Serif, DM_Sans, DM_Mono } from "next/font/google";
 import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
+import PlayerProvider from "@/components/PlayerProvider";
 import "./globals.css";
 
 const display = Instrument_Serif({
@@ -61,7 +62,7 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col">
         <ServiceWorkerRegistration />
-        {children}
+        <PlayerProvider>{children}</PlayerProvider>
       </body>
     </html>
   );

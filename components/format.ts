@@ -1,4 +1,4 @@
-import type { EpisodeStatus } from "@/lib/types";
+import type { EpisodeFormat, EpisodeMode, EpisodeStatus } from "@/lib/types";
 
 // Statuses that keep the client polling and hold a generation slot.
 // script_ready waits on the user but still occupies a slot until resolved.
@@ -30,6 +30,27 @@ export function formatTime(totalSeconds: number): string {
     return `${hours}:${String(minutes).padStart(2, "0")}:${paddedSeconds}`;
   }
   return `${minutes}:${paddedSeconds}`;
+}
+
+/** "two hosts", "brief", "debate", "lecture", or "read aloud" for meta lines. */
+export function styleLabel(episode: {
+  mode?: EpisodeMode;
+  options?: { format?: EpisodeFormat };
+}): string {
+  if (episode.mode === "reading") return "read aloud";
+  const format = episode.options?.format;
+  if (format === "brief" || format === "debate" || format === "lecture") {
+    return format;
+  }
+  return "two hosts";
+}
+
+/** "3h 44m" / "44m" for library totals. */
+export function formatTotalDuration(totalSeconds: number): string {
+  const minutes = Math.round(totalSeconds / 60);
+  const hours = Math.floor(minutes / 60);
+  if (hours > 0) return `${hours}h ${minutes % 60}m`;
+  return `${minutes}m`;
 }
 
 export function formatDate(iso: string): string {

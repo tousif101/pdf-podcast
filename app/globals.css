@@ -71,3 +71,9 @@ input[type="range"].seek-slider-light::-webkit-slider-runnable-track {
   background: linear-gradient(to right, #E8481F var(--seek-progress, 0%), #DCD5CA var(--seek-progress, 0%));
 }
 input[type="range"].seek-slider-light::-webkit-slider-thumb { background: #17150F; }
+
+/* full-player artwork bars */
+@keyframes eq-bar {
+  0%, 100% { transform: scaleY(0.55); }
+  50%      { transform: scaleY(1); }
+}

@@ -1,214 +1,302 @@
 "use client";
 
-import type { Episode, PodcastScript } from "@/lib/types";
-import { isSingleVoiceFormat, normalizeOptions } from "@/lib/options";
-import { STATUS_LABELS, formatDate, formatTime } from "./format";
+import Link from "next/link";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { Episode, EpisodeStatus } from "@/lib/types";
+import { STATUS_LABELS, formatDate, formatTime, styleLabel } from "./format";
+import { usePlayer } from "./PlayerProvider";
 import DownloadButton from "./DownloadButton";
 import ShareButton from "./ShareButton";
-import ScriptEditor from "./ScriptEditor";
+import PlayButton from "./ui/PlayButton";
+import Spinner from "./ui/Spinner";
 
 interface EpisodeCardProps {
   episode: Episode;
-  isCurrent: boolean;
-  expanded: boolean;
-  onPlay: () => void;
-  onToggleExpand: () => void;
   onDelete: () => void;
-  onReviewSubmit: (script: PodcastScript) => Promise<void>;
+  onTryAnother: () => void;
+}
+
+// Stage index over the 4 in-progress statuses drives the thin progress bar.
+const STAGE_INDEX: Partial<Record<EpisodeStatus, number>> = {
+  pending: 1,
+  extracting: 2,
+  scripting: 3,
+  synthesizing: 4,
+};
+
+function OverflowMenu({
+  episode,
+  onDelete,
+  onDownloadedChange,
+}: {
+  episode: Episode;
+  onDelete: () => void;
+  onDownloadedChange: (downloaded: boolean) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  const hasTranscript = Boolean(
+    episode.script && episode.script.lines.length > 0,
+  );
+
+  return (
+    <div ref={rootRef} className="relative shrink-0">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-label={`More actions for ${episode.title}`}
+        aria-expanded={open}
+        className="flex size-9 items-center justify-center rounded-full text-ink-4 transition-colors hover:bg-paper-2 hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+      >
+        <svg viewBox="0 0 24 24" fill="currentColor" className="size-4" aria-hidden="true">
+          <circle cx="5" cy="12" r="1.6" />
+          <circle cx="12" cy="12" r="1.6" />
+          <circle cx="19" cy="12" r="1.6" />
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute right-0 top-10 z-20 w-56 rounded-2xl border border-line bg-card p-2 shadow-[0_4px_16px_rgba(23,21,15,.09)]">
+          {hasTranscript && (
+            <Link
+              href={`/e/${episode.id}/transcript`}
+              className="block rounded-lg px-3 py-2 text-[13px] font-medium text-ink-2 hover:bg-paper-2 lg:hidden"
+            >
+              Transcript
+            </Link>
+          )}
+          <div className="px-1 py-1.5 lg:hidden">
+            <ShareButton
+              episodeId={episode.id}
+              initialShared={Boolean(episode.shareToken)}
+            />
+          </div>
+          <div className="px-1 py-1.5">
+            <DownloadButton
+              episodeId={episode.id}
+              onStateChange={onDownloadedChange}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              onDelete();
+            }}
+            className="block w-full rounded-lg px-3 py-2 text-left text-[13px] font-medium text-signal-ink underline-offset-[3px] hover:underline"
+          >
+            Delete episode
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function EpisodeCard({
   episode,
-  isCurrent,
-  expanded,
-  onPlay,
-  onToggleExpand,
   onDelete,
-  onReviewSubmit,
+  onTryAnother,
 }: EpisodeCardProps) {
+  const player = usePlayer();
+  const [downloaded, setDownloaded] = useState(false);
+  const onDownloadedChange = useCallback(
+    (value: boolean) => setDownloaded(value),
+    [],
+  );
+
   const isReady = episode.status === "ready";
   const isError = episode.status === "error";
   const needsReview = episode.status === "script_ready";
   const inProgress = !isReady && !isError && !needsReview;
+  const isCurrent = player.episode?.id === episode.id;
 
-  const meta = [formatDate(episode.createdAt)];
-  if (isReady && typeof episode.durationSeconds === "number") {
-    meta.push(formatTime(episode.durationSeconds));
-  }
+  const shell = `rounded-2xl border transition-colors ${
+    isCurrent ? "border-signal bg-[#FFF8F5]" : "border-line bg-card"
+  }`;
 
-  const titleBlock = (
-    <>
-      <p className="truncate font-medium text-zinc-100">{episode.title}</p>
-      <p className="mt-0.5 truncate text-xs text-zinc-400">
-        {meta.filter(Boolean).join(" · ")}
-      </p>
-    </>
+  const title = (
+    <p className="truncate font-display text-base leading-tight text-ink lg:text-[19px]">
+      {episode.title}
+    </p>
   );
 
-  return (
-    <li
-      className={`overflow-hidden rounded-2xl border transition-colors ${
-        isCurrent
-          ? "border-violet-500/60 bg-violet-500/5"
-          : "border-zinc-800 bg-zinc-900/60"
-      }`}
-    >
-      <div className="flex items-center gap-3 p-4">
-        <span
-          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
-            isError
-              ? "bg-red-500/15 text-red-400"
-              : "bg-violet-500/15 text-violet-300"
-          }`}
+  if (needsReview) {
+    return (
+      <li className={shell}>
+        <Link
+          href={`/e/${episode.id}/script`}
+          className="flex items-center gap-3 p-[13px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal lg:gap-4 lg:px-[18px] lg:py-[15px]"
         >
-          {isReady ? (
-            <button
-              type="button"
-              onClick={onPlay}
-              aria-label={
-                isCurrent
-                  ? `Now playing ${episode.title}`
-                  : `Play ${episode.title}`
-              }
-              className="flex h-10 w-10 items-center justify-center rounded-full hover:bg-violet-500/25"
-            >
-              <svg
-                viewBox="0 0 24 24"
-                fill="currentColor"
-                className="h-5 w-5"
-                aria-hidden="true"
-              >
-                {isCurrent ? (
-                  <path d="M7 5h3.5v14H7V5Zm6.5 0H17v14h-3.5V5Z" />
-                ) : (
-                  <path d="M8.5 5.5v13l10-6.5-10-6.5Z" />
-                )}
-              </svg>
-            </button>
-          ) : isError ? (
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-signal-tint text-signal-ink lg:size-11">
             <svg
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
-              strokeWidth="2"
+              strokeWidth="1.8"
               strokeLinecap="round"
-              className="h-5 w-5"
+              strokeLinejoin="round"
+              className="size-4.5"
               aria-hidden="true"
             >
-              <path d="M12 7v6m0 4h.01" />
+              <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
             </svg>
-          ) : (
-            <span
-              className="h-4 w-4 animate-spin rounded-full border-2 border-violet-300 border-t-transparent"
-              aria-hidden="true"
-            />
-          )}
-        </span>
+          </span>
+          <span className="min-w-0 flex-1">
+            {title}
+            <span className="mt-0.5 block truncate font-mono text-[11.5px] text-signal-ink">
+              {STATUS_LABELS[episode.status]} · {formatDate(episode.createdAt)}
+            </span>
+          </span>
+          <span className="shrink-0 rounded-full bg-signal-tint px-[14px] py-2 text-[12.5px] font-medium text-signal-ink">
+            Review script
+          </span>
+        </Link>
+      </li>
+    );
+  }
 
-        {isReady ? (
+  if (inProgress) {
+    const stage = STAGE_INDEX[episode.status] ?? 1;
+    return (
+      <li className={`${shell} p-[13px] lg:px-[18px] lg:py-[15px]`}>
+        <div className="flex items-center gap-3 lg:gap-4">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-signal-tint lg:size-11">
+            <Spinner />
+          </span>
+          <div className="min-w-0 flex-1">
+            {title}
+            <p
+              role="status"
+              className="mt-0.5 truncate font-mono text-[11.5px] text-signal"
+            >
+              {STATUS_LABELS[episode.status]}
+            </p>
+          </div>
           <button
             type="button"
-            onClick={onPlay}
-            className="min-w-0 flex-1 text-left"
+            onClick={onDelete}
+            className="shrink-0 px-1.5 py-2 text-[13px] font-medium text-ink-3 underline-offset-[3px] hover:text-ink hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
           >
-            {titleBlock}
+            Cancel
           </button>
-        ) : (
-          <div className="min-w-0 flex-1">{titleBlock}</div>
-        )}
+        </div>
+        <div className="mt-3 h-[3px] overflow-hidden rounded-full bg-line-2">
+          <div
+            className="h-full rounded-full bg-signal transition-[width] duration-700"
+            style={{ width: `${(stage / 4) * 100}%` }}
+          />
+        </div>
+        <p className="mt-2 text-[11.5px] text-ink-4">
+          Usually about 90 seconds. You can close the app — we&apos;ll keep
+          going.
+        </p>
+      </li>
+    );
+  }
 
+  if (isError) {
+    return (
+      <li className={`${shell} flex items-center gap-3 p-[13px] lg:gap-4 lg:px-[18px] lg:py-[15px]`}>
+        <span
+          className="flex size-10 shrink-0 items-center justify-center rounded-full bg-paper-2 font-mono text-[15px] font-medium text-signal-ink lg:size-11"
+          aria-hidden="true"
+        >
+          !
+        </span>
+        <div className="min-w-0 flex-1">
+          {title}
+          <p className="mt-0.5 text-[12.5px] leading-snug text-signal-ink">
+            {episode.error || "Something went wrong making this episode."}{" "}
+            Credit refunded.
+          </p>
+        </div>
         <button
           type="button"
-          onClick={onDelete}
-          aria-label={`Delete ${episode.title}`}
-          className="shrink-0 rounded-full p-2 text-zinc-500 hover:bg-red-500/10 hover:text-red-400"
+          onClick={onTryAnother}
+          className="shrink-0 rounded-full border border-ink px-4 py-2 text-[13px] font-medium text-ink transition-colors hover:bg-ink hover:text-paper focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
         >
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="h-4.5 w-4.5"
-            aria-hidden="true"
-          >
-            <path d="M4 7h16M10 11v6m4-6v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" />
-          </svg>
+          Try another
         </button>
-      </div>
-
-      {inProgress && (
-        <div
-          className="flex items-center gap-2 px-4 pb-4 text-sm text-violet-300"
-          role="status"
-        >
-          <span
-            className="h-2 w-2 animate-pulse rounded-full bg-violet-400"
-            aria-hidden="true"
-          />
-          {STATUS_LABELS[episode.status]}
-        </div>
-      )}
-
-      {needsReview && episode.script && (
-        <ScriptEditor
-          script={episode.script}
-          // Read-aloud and brief/lecture formats are single-narrator.
-          singleVoice={
-            episode.mode === "reading" ||
-            isSingleVoiceFormat(normalizeOptions(episode.options).format)
-          }
-          onSubmit={onReviewSubmit}
+        <OverflowMenu
+          episode={episode}
+          onDelete={onDelete}
+          onDownloadedChange={onDownloadedChange}
         />
-      )}
+      </li>
+    );
+  }
 
-      {isError && (
-        <p className="px-4 pb-4 text-sm text-red-400">
-          {episode.error || "Something went wrong generating this episode."}
-        </p>
-      )}
+  const meta = [
+    typeof episode.durationSeconds === "number"
+      ? formatTime(episode.durationSeconds)
+      : null,
+    styleLabel(episode),
+    formatDate(episode.createdAt),
+    downloaded ? "downloaded" : null,
+  ].filter(Boolean);
 
-      {isReady && (
-        <div className="flex flex-wrap items-center gap-2 px-4 pb-4">
-          <DownloadButton episodeId={episode.id} />
-          {episode.script && episode.script.lines.length > 0 && (
-            <button
-              type="button"
-              onClick={onToggleExpand}
-              aria-expanded={expanded}
-              className="rounded-full bg-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:bg-zinc-700"
-            >
-              {expanded ? "Hide transcript" : "Transcript"}
-            </button>
-          )}
-          <ShareButton
-            episodeId={episode.id}
-            initialShared={Boolean(episode.shareToken)}
-          />
-        </div>
+  return (
+    <li className={`${shell} flex items-center gap-3 p-[13px] lg:gap-4 lg:px-[18px] lg:py-[15px]`}>
+      <PlayButton
+        size="sm"
+        playing={isCurrent && player.playing}
+        focal={isCurrent}
+        onClick={() => player.play(episode)}
+        aria-label={
+          isCurrent
+            ? player.playing
+              ? `Pause ${episode.title}`
+              : `Resume ${episode.title}`
+            : `Play ${episode.title}`
+        }
+        className="lg:size-11"
+      />
+      <button
+        type="button"
+        onClick={() => player.play(episode)}
+        className="min-w-0 flex-1 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+      >
+        {title}
+        <span className="mt-0.5 block truncate font-mono text-[11.5px] text-ink-4">
+          {meta.join(" · ")}
+        </span>
+      </button>
+      {episode.script && episode.script.lines.length > 0 && (
+        <Link
+          href={`/e/${episode.id}/transcript`}
+          className="hidden shrink-0 rounded-full bg-paper-2 px-[14px] py-2 text-[12.5px] font-medium text-ink-2 transition-colors hover:bg-line focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal lg:inline-flex"
+        >
+          Transcript
+        </Link>
       )}
-
-      {isReady && expanded && episode.script && (
-        <div className="space-y-3 border-t border-zinc-800 px-4 py-4">
-          {episode.script.lines.map((line, index) => (
-            <div key={index} className="flex gap-3">
-              <span
-                className={`mt-0.5 h-fit shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-semibold tracking-wide ${
-                  line.speaker === "HOST"
-                    ? "bg-violet-500/20 text-violet-300"
-                    : "bg-emerald-500/20 text-emerald-300"
-                }`}
-              >
-                {line.speaker}
-              </span>
-              <p className="text-sm leading-relaxed text-zinc-300">
-                {line.text}
-              </p>
-            </div>
-          ))}
-        </div>
-      )}
+      <span className="hidden shrink-0 lg:inline-flex">
+        <ShareButton
+          episodeId={episode.id}
+          initialShared={Boolean(episode.shareToken)}
+        />
+      </span>
+      <OverflowMenu
+        episode={episode}
+        onDelete={onDelete}
+        onDownloadedChange={onDownloadedChange}
+      />
     </li>
   );
 }

@@ -1,8 +1,9 @@
 import type { ComponentProps } from "react";
 
-export type PlayButtonSize = "sm" | "md" | "lg" | "xl";
+export type PlayButtonSize = "xs" | "sm" | "md" | "lg" | "xl";
 
 const SIZE: Record<PlayButtonSize, string> = {
+  xs: "size-[34px]",
   sm: "size-10",
   md: "size-11",
   lg: "size-[52px]",
@@ -10,6 +11,7 @@ const SIZE: Record<PlayButtonSize, string> = {
 };
 
 const ICON: Record<PlayButtonSize, number> = {
+  xs: 12,
   sm: 14,
   md: 15,
   lg: 18,

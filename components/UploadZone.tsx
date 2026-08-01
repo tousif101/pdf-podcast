@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   EpisodeAudience,
   EpisodeFormat,
@@ -10,7 +10,22 @@ import type {
   UploadQuote,
 } from "@/lib/types";
 import { VOICES } from "@/lib/voices";
-import { isSingleVoiceFormat, normalizeOptions } from "@/lib/options";
+import {
+  LENGTH_BUDGETS,
+  isSingleVoiceFormat,
+  normalizeOptions,
+} from "@/lib/options";
+import { PRESETS, presetEstimate, type PresetId } from "./presets";
+import { styleLabel } from "./format";
+import Button from "./ui/Button";
+import Sheet from "./ui/Sheet";
+import Eyebrow from "./ui/Eyebrow";
+import Spinner from "./ui/Spinner";
+
+export interface ComposerApi {
+  openPicker: () => void;
+  addFiles: (files: File[]) => void;
+}
 
 interface UploadZoneProps {
   onQuote: (
@@ -24,12 +39,10 @@ interface UploadZoneProps {
     options: EpisodeOptions,
   ) => Promise<void>;
   onBuyCredits: () => void;
+  /** rail = laptop right column, always visible; sheet = opens after a file is picked. */
+  surface: "rail" | "sheet";
+  registerApi?: (api: ComposerApi) => void;
 }
-
-const MODES: Array<{ value: EpisodeMode; label: string; hint: string }> = [
-  { value: "conversation", label: "Conversation", hint: "Hosts discuss the document" },
-  { value: "reading", label: "Read aloud", hint: "One voice reads the text verbatim" },
-];
 
 const LENGTHS: Array<{ value: EpisodeLength; label: string }> = [
   { value: "short", label: "Short" },
@@ -64,7 +77,7 @@ function Segmented<T extends string>({
 }) {
   return (
     <div>
-      <p className="mb-1.5 text-xs font-medium text-zinc-500">{label}</p>
+      <p className="mb-1.5 text-[12px] font-medium text-ink-3">{label}</p>
       <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={label}>
         {options.map((o) => (
           <button
@@ -74,10 +87,10 @@ function Segmented<T extends string>({
             aria-checked={value === o.value}
             disabled={disabled}
             onClick={() => onChange(o.value)}
-            className={`rounded-lg border px-3 py-1.5 text-sm transition-colors ${
+            className={`rounded-full border px-3 py-1.5 text-[12.5px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal ${
               value === o.value
-                ? "border-violet-500/70 bg-violet-500/10 text-zinc-50"
-                : "border-zinc-800 bg-zinc-900/40 text-zinc-400 hover:border-zinc-600"
+                ? "border-signal bg-signal-tint text-ink"
+                : "border-line bg-card text-ink-3 hover:text-ink"
             }`}
           >
             {o.label}
@@ -101,12 +114,14 @@ function VoiceSelect({
 }) {
   return (
     <label className="flex-1">
-      <span className="mb-1.5 block text-xs font-medium text-zinc-500">{label}</span>
+      <span className="mb-1.5 block text-[12px] font-medium text-ink-3">
+        {label}
+      </span>
       <select
         value={value}
         disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-2 text-sm text-zinc-100 focus:border-violet-500 focus:outline-none"
+        className="w-full rounded-xl border border-line bg-card px-3 py-2.5 text-[13px] text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
       >
         {VOICES.map((v) => (
           <option key={v.id} value={v.id}>
@@ -118,60 +133,162 @@ function VoiceSelect({
   );
 }
 
+function CheckboxRow({
+  checked,
+  onChange,
+  disabled,
+  children,
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  disabled?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="flex items-center gap-2.5 text-[13px] text-ink-2">
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.checked)}
+        className="size-4 rounded border-line accent-signal"
+      />
+      {children}
+    </label>
+  );
+}
+
+function filesLabel(files: File[]): string {
+  return files.length === 1 ? files[0].name : `${files.length} documents`;
+}
+
 export default function UploadZone({
   onQuote,
   onConfirm,
   onBuyCredits,
+  surface,
+  registerApi,
 }: UploadZoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragActive, setDragActive] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [mode, setMode] = useState<EpisodeMode>("conversation");
+  const [files, setFiles] = useState<File[] | null>(null);
+  const [step, setStep] = useState<"options" | "quote">("options");
+  const [quote, setQuote] = useState<UploadQuote | null>(null);
+  const [presetId, setPresetId] = useState<PresetId>("hosts");
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [options, setOptions] = useState<EpisodeOptions>(() =>
-    normalizeOptions({}),
+    normalizeOptions(PRESETS[0].options),
   );
-  const [pending, setPending] = useState<{
-    files: File[];
-    quote: UploadQuote;
-  } | null>(null);
+
+  const preset = PRESETS.find((p) => p.id === presetId) ?? PRESETS[0];
+  const mode = preset.mode;
+  const singleVoice = isSingleVoiceFormat(options.format);
 
   const set = <K extends keyof EpisodeOptions>(key: K, v: EpisodeOptions[K]) =>
     setOptions((o) => ({ ...o, [key]: v }));
 
-  const singleVoice = isSingleVoiceFormat(options.format);
-
-  const handleFiles = async (list: FileList | null | undefined) => {
-    const files = list ? Array.from(list) : [];
-    if (files.length === 0 || busy) return;
-    const allPdf = files.every(
-      (f) =>
-        f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf"),
-    );
-    if (!allPdf) {
-      setError("Only PDF files are supported.");
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      const quote = await onQuote(files, mode, options);
-      setPending({ files, quote });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not read the PDF.");
-    } finally {
-      setBusy(false);
-      if (inputRef.current) inputRef.current.value = "";
-    }
+  const selectPreset = (id: PresetId) => {
+    const next = PRESETS.find((p) => p.id === id);
+    if (!next) return;
+    setPresetId(id);
+    setOptions((o) => normalizeOptions({ ...o, ...next.options }));
   };
 
+  const reset = useCallback(() => {
+    setFiles(null);
+    setQuote(null);
+    setStep("options");
+    setError(null);
+    if (inputRef.current) inputRef.current.value = "";
+  }, []);
+
+  const runQuote = useCallback(
+    async (
+      pendingFiles: File[],
+      quoteMode: EpisodeMode,
+      quoteOptions: EpisodeOptions,
+    ) => {
+      setBusy(true);
+      setError(null);
+      try {
+        const result = await onQuote(pendingFiles, quoteMode, quoteOptions);
+        setQuote(result);
+        setStep("quote");
+      } catch (err) {
+        setError(
+          err instanceof Error ? err.message : "Could not read the PDF.",
+        );
+      } finally {
+        setBusy(false);
+      }
+    },
+    [onQuote],
+  );
+
+  const handleFiles = useCallback(
+    (list: FileList | File[] | null | undefined) => {
+      const next = list ? Array.from(list) : [];
+      if (next.length === 0 || busy) return;
+      const allPdf = next.every(
+        (f) =>
+          f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf"),
+      );
+      if (!allPdf) {
+        setError("Only PDF files are supported.");
+        return;
+      }
+      setError(null);
+      setFiles(next);
+      setStep("options");
+      setQuote(null);
+      if (inputRef.current) inputRef.current.value = "";
+    },
+    [busy],
+  );
+
+  useEffect(() => {
+    registerApi?.({
+      openPicker: () => inputRef.current?.click(),
+      addFiles: (added) => handleFiles(added),
+    });
+  }, [registerApi, handleFiles]);
+
+  // On laptop the whole page is a drop target.
+  useEffect(() => {
+    if (surface !== "rail") return;
+    const onDragOver = (event: DragEvent) => {
+      if (event.dataTransfer?.types.includes("Files")) {
+        event.preventDefault();
+        setDragActive(true);
+      }
+    };
+    const onDragLeave = (event: DragEvent) => {
+      if (!event.relatedTarget) setDragActive(false);
+    };
+    const onDrop = (event: DragEvent) => {
+      event.preventDefault();
+      setDragActive(false);
+      handleFiles(event.dataTransfer?.files);
+    };
+    window.addEventListener("dragover", onDragOver);
+    window.addEventListener("dragleave", onDragLeave);
+    window.addEventListener("drop", onDrop);
+    return () => {
+      window.removeEventListener("dragover", onDragOver);
+      window.removeEventListener("dragleave", onDragLeave);
+      window.removeEventListener("drop", onDrop);
+    };
+  }, [surface, handleFiles]);
+
   const handleConfirm = async () => {
-    if (!pending || busy) return;
+    if (!files || busy) return;
     setBusy(true);
     setError(null);
     try {
-      await onConfirm(pending.files, mode, options);
-      setPending(null);
+      await onConfirm(files, mode, options);
+      reset();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed.");
     } finally {
@@ -179,234 +296,432 @@ export default function UploadZone({
     }
   };
 
-  const selectedMode = MODES.find((m) => m.value === mode) ?? MODES[0];
+  const fileInput = (
+    <input
+      ref={inputRef}
+      type="file"
+      accept="application/pdf,.pdf"
+      multiple
+      className="hidden"
+      onChange={(event) => handleFiles(event.target.files)}
+    />
+  );
 
-  if (pending) {
-    const { quote, files } = pending;
-    const affordable = quote.isAdmin || (quote.balance ?? 0) >= quote.cost;
-    const label =
-      files.length === 1
-        ? files[0].name
-        : `${files.length} documents`;
-    return (
-      <div className="rounded-2xl border border-violet-500/40 bg-violet-500/5 px-5 py-5">
-        <p className="truncate font-medium text-zinc-100">{label}</p>
-        <p className="mt-1 text-sm text-zinc-400">
-          {quote.pages} {quote.pages === 1 ? "page" : "pages"} · ≈
-          {quote.estMinutes} min · {selectedMode.label.toLowerCase()}
-          {mode === "conversation" ? ` · ${options.format}` : ""}
-        </p>
-        <p className="mt-3 text-sm">
-          {quote.isAdmin ? (
-            <span className="text-violet-300">Free — admin account</span>
-          ) : (
-            <span className="text-zinc-200">
-              Costs{" "}
-              <strong>
-                {quote.cost} {quote.cost === 1 ? "credit" : "credits"}
-              </strong>{" "}
-              · you have {quote.balance}
-            </span>
-          )}
-        </p>
-        {!affordable && (
-          <p className="mt-2 text-sm text-amber-400">
-            Not enough credits for this episode.
-          </p>
-        )}
-        <div className="mt-4 flex gap-2">
-          {affordable ? (
-            <button
-              type="button"
-              onClick={() => void handleConfirm()}
-              disabled={busy}
-              className="flex-1 rounded-xl bg-violet-500 px-4 py-2.5 font-medium text-white hover:bg-violet-400 disabled:opacity-50"
-            >
-              {busy ? "Starting…" : "Generate"}
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={onBuyCredits}
-              className="flex-1 rounded-xl bg-violet-500 px-4 py-2.5 font-medium text-white hover:bg-violet-400"
-            >
-              Buy credits
-            </button>
-          )}
+  const presetCards = (
+    <div role="radiogroup" aria-label="How should it sound?" className="space-y-2">
+      {PRESETS.map((p) => {
+        const selected = p.id === presetId;
+        const estimate = presetEstimate(p, quote?.chars ?? null);
+        const sub = [
+          estimate.minutes > 0 ? `~${estimate.minutes} min` : null,
+          p.hint,
+          estimate.credits !== null
+            ? `${estimate.credits} credit${estimate.credits === 1 ? "" : "s"}`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(" · ");
+        return (
           <button
-            type="button"
-            onClick={() => setPending(null)}
-            disabled={busy}
-            className="rounded-xl border border-zinc-700 px-4 py-2.5 text-zinc-300 hover:border-zinc-500"
-          >
-            Cancel
-          </button>
-        </div>
-        {error && (
-          <p role="alert" className="mt-3 text-sm text-red-400">
-            {error}
-          </p>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <div>
-      <div
-        role="radiogroup"
-        aria-label="Episode style"
-        className="mb-3 grid grid-cols-2 gap-2"
-      >
-        {MODES.map((option) => (
-          <button
-            key={option.value}
+            key={p.id}
             type="button"
             role="radio"
-            aria-checked={mode === option.value}
+            aria-checked={selected}
             disabled={busy}
-            onClick={() => setMode(option.value)}
-            className={`rounded-xl border px-3 py-2 text-left text-sm transition-colors ${
-              mode === option.value
-                ? "border-violet-500/70 bg-violet-500/10 text-zinc-50"
-                : "border-zinc-800 bg-zinc-900/40 text-zinc-400 hover:border-zinc-600"
+            onClick={() => selectPreset(p.id)}
+            className={`flex w-full items-center gap-3 rounded-2xl p-3.5 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal ${
+              selected
+                ? "border-2 border-signal bg-[#FFF8F5]"
+                : "border border-line bg-card hover:border-ink-5"
             }`}
           >
-            <span className="block font-medium">{option.label}</span>
+            <span
+              className={`flex size-[30px] shrink-0 items-center justify-center rounded-lg text-[13px] ${
+                selected
+                  ? "bg-signal-tint text-signal"
+                  : "bg-paper-2 text-ink-3"
+              }`}
+              aria-hidden="true"
+            >
+              {p.glyph}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[13.5px] font-medium leading-snug text-ink">
+                {p.title}
+              </span>
+              <span className="mt-0.5 block font-mono text-[11px] text-ink-4">
+                {sub}
+              </span>
+            </span>
+            {selected && (
+              <span
+                className="flex size-[17px] shrink-0 items-center justify-center rounded-full bg-signal"
+                aria-hidden="true"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="white"
+                  strokeWidth="3.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="size-2.5"
+                >
+                  <path d="m5 13 4 4L19 7" />
+                </svg>
+              </span>
+            )}
           </button>
-        ))}
-      </div>
+        );
+      })}
+    </div>
+  );
 
-      <div className="mb-4 space-y-3 rounded-xl border border-zinc-800/70 bg-zinc-900/30 p-3">
-        <Segmented
-          label="Length"
-          value={options.length}
-          options={LENGTHS}
-          onChange={(v) => set("length", v)}
-          disabled={busy}
-        />
-        {mode === "conversation" && (
-          <>
-            <Segmented
-              label="Format"
-              value={options.format}
-              options={FORMATS}
-              onChange={(v) => set("format", v)}
-              disabled={busy}
-            />
-            <Segmented
-              label="Audience"
-              value={options.audience}
-              options={AUDIENCES}
-              onChange={(v) => set("audience", v)}
-              disabled={busy}
-            />
-            <div className="flex gap-2">
-              <VoiceSelect
-                label={singleVoice ? "Voice" : "Host voice"}
-                value={options.hostVoice}
-                onChange={(v) => set("hostVoice", v)}
+  const disclosure = (
+    <div>
+      <button
+        type="button"
+        aria-expanded={showAdvanced}
+        aria-controls="composer-advanced"
+        onClick={() => setShowAdvanced((v) => !v)}
+        className="flex w-full items-center justify-center gap-1.5 py-2 text-[13px] font-medium text-ink-3 transition-colors hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+      >
+        Voices, length &amp; depth
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={`size-3.5 transition-transform ${showAdvanced ? "rotate-180" : ""}`}
+          aria-hidden="true"
+        >
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      </button>
+      {showAdvanced && (
+        <div id="composer-advanced" className="space-y-3.5 pt-2">
+          <Segmented
+            label="Length"
+            value={options.length}
+            options={LENGTHS}
+            onChange={(v) => set("length", v)}
+            disabled={busy}
+          />
+          {mode === "conversation" && (
+            <>
+              <Segmented
+                label="Format"
+                value={options.format}
+                options={FORMATS}
+                onChange={(v) => set("format", v)}
                 disabled={busy}
               />
-              {!singleVoice && (
+              <Segmented
+                label="Audience"
+                value={options.audience}
+                options={AUDIENCES}
+                onChange={(v) => set("audience", v)}
+                disabled={busy}
+              />
+              <div className="flex gap-2">
                 <VoiceSelect
-                  label="Guest voice"
-                  value={options.guestVoice}
-                  onChange={(v) => set("guestVoice", v)}
+                  label={singleVoice ? "Voice" : "Host voice"}
+                  value={options.hostVoice}
+                  onChange={(v) => set("hostVoice", v)}
                   disabled={busy}
                 />
-              )}
-            </div>
-          </>
-        )}
-        {mode === "reading" && (
-          <div className="flex gap-2">
+                {!singleVoice && (
+                  <VoiceSelect
+                    label="Guest voice"
+                    value={options.guestVoice}
+                    onChange={(v) => set("guestVoice", v)}
+                    disabled={busy}
+                  />
+                )}
+              </div>
+            </>
+          )}
+          {mode === "reading" && (
             <VoiceSelect
               label="Voice"
               value={options.readerVoice}
               onChange={(v) => set("readerVoice", v)}
               disabled={busy}
             />
-          </div>
-        )}
-
-        <label className="flex items-center gap-2.5 pt-1 text-sm text-zinc-300">
-          <input
-            type="checkbox"
-            checked={options.reviewScript}
-            disabled={busy}
-            onChange={(e) => set("reviewScript", e.target.checked)}
-            className="h-4 w-4 rounded border-zinc-700 bg-zinc-900 accent-violet-500"
-          />
-          Review &amp; edit the script before generating audio
-        </label>
-      </div>
-
-      <button
-        type="button"
-        onClick={() => inputRef.current?.click()}
-        onDragOver={(event) => {
-          event.preventDefault();
-          setDragActive(true);
-        }}
-        onDragLeave={() => setDragActive(false)}
-        onDrop={(event) => {
-          event.preventDefault();
-          setDragActive(false);
-          void handleFiles(event.dataTransfer.files);
-        }}
-        disabled={busy}
-        aria-label="Upload a PDF to create a podcast episode"
-        className={`w-full rounded-2xl border-2 border-dashed px-6 py-8 text-center transition-colors ${
-          dragActive
-            ? "border-violet-400 bg-violet-500/10"
-            : "border-zinc-700 bg-zinc-900/40 hover:border-violet-500/60"
-        } ${busy ? "opacity-60" : "cursor-pointer"}`}
-      >
-        <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-violet-500/15 text-violet-300">
-          {busy ? (
-            <span
-              className="h-5 w-5 animate-spin rounded-full border-2 border-violet-300 border-t-transparent"
-              aria-hidden="true"
-            />
-          ) : (
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="h-6 w-6"
-              aria-hidden="true"
-            >
-              <path d="M12 16V4m0 0 4 4m-4-4L8 8" />
-              <path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" />
-            </svg>
           )}
-        </span>
-        <span className="mt-3 block font-medium text-zinc-100">
-          {busy ? "Reading PDFs…" : "Upload PDFs"}
-        </span>
-        <span className="mt-1 block text-sm text-zinc-400">
-          {busy
-            ? "Calculating episode price"
-            : `${selectedMode.hint} · one or several PDFs`}
-        </span>
-      </button>
-      <input
-        ref={inputRef}
-        type="file"
-        accept="application/pdf,.pdf"
-        multiple
-        className="hidden"
-        onChange={(event) => void handleFiles(event.target.files)}
-      />
-      {error && (
-        <p role="alert" className="mt-3 text-sm text-red-400">
-          {error}
-        </p>
+        </div>
       )}
     </div>
+  );
+
+  const reviewRow = (
+    <CheckboxRow
+      checked={options.reviewScript}
+      disabled={busy}
+      onChange={(v) => set("reviewScript", v)}
+    >
+      Review the script first
+    </CheckboxRow>
+  );
+
+  const fileRow = files && (
+    <div className="flex items-center gap-3 rounded-2xl border border-line bg-card p-3">
+      <span
+        className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-signal-tint font-mono text-[9px] font-medium text-signal-ink"
+        aria-hidden="true"
+      >
+        PDF
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[13px] font-medium text-ink">
+          {filesLabel(files)}
+        </span>
+        <span className="block font-mono text-[11px] text-ink-4">
+          {quote
+            ? `${quote.pages} page${quote.pages === 1 ? "" : "s"}`
+            : `${(files.reduce((n, f) => n + f.size, 0) / 1024 / 1024).toFixed(1)} MB`}
+        </span>
+      </span>
+      <button
+        type="button"
+        onClick={reset}
+        disabled={busy}
+        aria-label="Remove file"
+        className="shrink-0 rounded-full p-1.5 text-ink-4 transition-colors hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          className="size-3.5"
+          aria-hidden="true"
+        >
+          <path d="M6 6l12 12M18 6 6 18" />
+        </svg>
+      </button>
+    </div>
+  );
+
+  const dropzone = (
+    <button
+      type="button"
+      onClick={() => inputRef.current?.click()}
+      onDragOver={(event) => {
+        event.preventDefault();
+        setDragActive(true);
+      }}
+      onDragLeave={() => setDragActive(false)}
+      onDrop={(event) => {
+        event.preventDefault();
+        setDragActive(false);
+        handleFiles(event.dataTransfer.files);
+      }}
+      disabled={busy}
+      aria-label="Upload a PDF to make an episode"
+      className={`w-full rounded-2xl border-[1.5px] border-dashed p-7 text-center transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal ${
+        dragActive
+          ? "border-signal bg-signal-tint"
+          : "border-line bg-paper-3 hover:border-ink-5"
+      } ${busy ? "opacity-60" : "cursor-pointer"}`}
+    >
+      <span className="mx-auto flex size-[46px] items-center justify-center rounded-[14px] bg-signal-tint text-signal">
+        {busy ? (
+          <Spinner />
+        ) : (
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="size-5"
+            aria-hidden="true"
+          >
+            <path d="M12 16V4m0 0 4 4m-4-4L8 8" />
+            <path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" />
+          </svg>
+        )}
+      </span>
+      <span className="mt-3 block text-[13.5px] font-medium text-ink">
+        {busy ? "Reading your PDF…" : "Drop a PDF here"}
+      </span>
+      <span className="mt-1 block text-[12.5px] text-ink-3">
+        {busy ? (
+          "Pricing the episode"
+        ) : (
+          <>
+            or <span className="text-signal-ink underline">browse your files</span>
+          </>
+        )}
+      </span>
+    </button>
+  );
+
+  const quotePanel = quote && files && (
+    <div>
+      <h3 className="font-display text-[25px] leading-[1.1] text-ink">
+        Ready to make
+      </h3>
+      <div className="mt-4 rounded-2xl border border-line bg-card px-4">
+        {[
+          ["Document", filesLabel(files)],
+          [
+            "Style",
+            [styleLabel({ mode, options }), options.length]
+              .map((word) => word[0].toUpperCase() + word.slice(1))
+              .join(" · "),
+          ],
+          [
+            "Voices",
+            mode === "reading"
+              ? options.readerVoice
+              : singleVoice
+                ? options.hostVoice
+                : `${options.hostVoice} & ${options.guestVoice}`,
+          ],
+          ["Estimated", `≈ ${quote.estMinutes} min`],
+        ].map(([label, value], index) => (
+          <div
+            key={label}
+            className={`flex items-center justify-between gap-4 py-3 ${
+              index > 0 ? "border-t border-line-2" : ""
+            }`}
+          >
+            <span className="text-[13px] text-ink-3">{label}</span>
+            <span
+              className={`truncate text-[13px] font-medium text-ink ${
+                label === "Estimated" ? "font-mono" : ""
+              }`}
+            >
+              {value}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-3 flex items-center justify-between gap-3 rounded-2xl bg-signal-tint p-3.5">
+        {quote.isAdmin ? (
+          <p className="text-[13.5px] font-medium text-ink">
+            Free — admin account
+          </p>
+        ) : (
+          <div>
+            <p className="text-[13.5px] font-semibold text-ink">
+              {quote.cost} credit{quote.cost === 1 ? "" : "s"}
+            </p>
+            <p className="font-mono text-[11px] text-signal-ink">
+              {Math.max(0, (quote.balance ?? 0) - quote.cost)} left after this
+            </p>
+          </div>
+        )}
+        {!quote.isAdmin && (
+          <button
+            type="button"
+            onClick={onBuyCredits}
+            className="shrink-0 rounded-full border border-ink px-4 py-1.5 text-[12.5px] font-medium text-ink transition-colors hover:bg-ink hover:text-paper focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+          >
+            Top up
+          </button>
+        )}
+      </div>
+
+      {!quote.isAdmin && (quote.balance ?? 0) < quote.cost && (
+        <p className="mt-2 text-[13px] text-signal-ink" role="alert">
+          Not enough credits for this episode.
+        </p>
+      )}
+
+      <div className="mt-4">
+        <CheckboxRow
+          checked={options.reviewScript}
+          disabled={busy}
+          onChange={(v) => set("reviewScript", v)}
+        >
+          Show me the script before making audio
+        </CheckboxRow>
+      </div>
+
+      <div className="mt-4 space-y-2">
+        {quote.isAdmin || (quote.balance ?? 0) >= quote.cost ? (
+          <Button
+            onClick={() => void handleConfirm()}
+            disabled={busy}
+            className="w-full min-h-[52px]"
+          >
+            {busy ? "Starting…" : "Make episode"}
+          </Button>
+        ) : (
+          <Button onClick={onBuyCredits} className="w-full min-h-[52px]">
+            Buy credits
+          </Button>
+        )}
+        <button
+          type="button"
+          onClick={() => setStep("options")}
+          disabled={busy}
+          className="block w-full py-2 text-center text-[13px] font-medium text-ink-3 transition-colors hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+        >
+          Back
+        </button>
+      </div>
+    </div>
+  );
+
+  const errorLine = error && (
+    <p role="alert" className="mt-3 text-[13px] text-signal-ink">
+      {error}
+    </p>
+  );
+
+  const optionsPanel = (
+    <div className="space-y-4">
+      {files ? fileRow : dropzone}
+      <div>
+        <Eyebrow className="mb-2">
+          {files ? "How should it sound?" : "Style"}
+        </Eyebrow>
+        {presetCards}
+      </div>
+      {disclosure}
+      {reviewRow}
+      {files && (
+        <Button
+          onClick={() => void runQuote(files, mode, options)}
+          disabled={busy}
+          className="w-full min-h-[52px]"
+        >
+          {busy ? "Pricing…" : "Continue"}
+        </Button>
+      )}
+    </div>
+  );
+
+  if (surface === "rail") {
+    return (
+      <div>
+        {fileInput}
+        {step === "quote" && quotePanel ? quotePanel : optionsPanel}
+        {errorLine}
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {fileInput}
+      <Sheet
+        open={files !== null}
+        onClose={busy ? () => {} : reset}
+        aria-label="New episode"
+      >
+        {step === "quote" && quotePanel ? quotePanel : optionsPanel}
+        {errorLine}
+      </Sheet>
+    </>
   );
 }

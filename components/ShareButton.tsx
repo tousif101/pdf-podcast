@@ -2,84 +2,111 @@
 
 import { useState } from "react";
 
+interface ShareButtonProps {
+  episodeId: string;
+  initialShared: boolean;
+  /** Dark chip styling for the full player. */
+  dark?: boolean;
+}
+
 export default function ShareButton({
   episodeId,
   initialShared,
-}: {
-  episodeId: string;
-  initialShared: boolean;
-}) {
+  dark = false,
+}: ShareButtonProps) {
   const [shared, setShared] = useState(initialShared);
   const [url, setUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const toggle = async (enabled: boolean) => {
+  const chipClass = dark
+    ? "rounded-full bg-dark-2 px-[14px] py-2 text-[12.5px] font-medium text-dark-2xt transition-colors hover:text-dark-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal disabled:opacity-40"
+    : "rounded-full bg-paper-2 px-[14px] py-2 text-[12.5px] font-medium text-ink-2 transition-colors hover:bg-line focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal disabled:opacity-40";
+
+  const setEnabled = async (enabled: boolean): Promise<string | null> => {
+    const res = await fetch(`/api/episodes/${episodeId}/share`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled }),
+    });
+    const body = (await res.json().catch(() => null)) as {
+      url?: string | null;
+    } | null;
+    if (!res.ok) throw new Error("share failed");
+    return enabled ? (body?.url ?? null) : null;
+  };
+
+  const shareAndCopy = async () => {
     if (busy) return;
     setBusy(true);
     try {
-      const res = await fetch(`/api/episodes/${episodeId}/share`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled }),
-      });
-      const body = (await res.json().catch(() => null)) as {
-        url?: string | null;
-      } | null;
-      if (res.ok) {
-        setShared(enabled);
-        setUrl(enabled ? (body?.url ?? null) : null);
+      const link = url ?? (await setEnabled(true));
+      setShared(true);
+      setUrl(link);
+      if (link) {
+        try {
+          await navigator.clipboard.writeText(link);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        } catch {
+          // clipboard blocked; the link stays available on the next tap
+        }
       }
+    } catch {
+      // leave state unchanged; the user can retry
     } finally {
       setBusy(false);
     }
   };
 
-  const copy = async () => {
-    if (!url) return;
+  const unshare = async () => {
+    if (busy) return;
+    setBusy(true);
     try {
-      await navigator.clipboard.writeText(url);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      await setEnabled(false);
+      setShared(false);
+      setUrl(null);
     } catch {
-      // clipboard blocked
+      // retryable
+    } finally {
+      setBusy(false);
     }
   };
 
-  if (shared && url) {
+  if (!shared) {
     return (
-      <div className="flex w-full items-center gap-2 rounded-full bg-zinc-800 px-2 py-1">
-        <span className="min-w-0 flex-1 truncate px-1 text-xs text-zinc-400">
-          {url}
-        </span>
-        <button
-          type="button"
-          onClick={() => void copy()}
-          className="shrink-0 rounded-full bg-violet-500 px-2.5 py-1 text-xs font-medium text-white hover:bg-violet-400"
-        >
-          {copied ? "Copied" : "Copy"}
-        </button>
-        <button
-          type="button"
-          onClick={() => void toggle(false)}
-          disabled={busy}
-          aria-label="Stop sharing"
-          className="shrink-0 rounded-full px-2 py-1 text-xs text-zinc-500 hover:text-zinc-300"
-        >
-          Unshare
-        </button>
-      </div>
+      <button
+        type="button"
+        onClick={() => void shareAndCopy()}
+        disabled={busy}
+        className={chipClass}
+      >
+        {busy ? "Sharing…" : "Share"}
+      </button>
     );
   }
 
   return (
-    <button
-      type="button"
-      onClick={() => void toggle(true)}
-      disabled={busy}
-      className="rounded-full bg-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:bg-zinc-700 disabled:opacity-60"
-    >
-      {busy ? "…" : shared ? "Get share link" : "Share"}
-    </button>
+    <span className="inline-flex items-center gap-1.5">
+      <button
+        type="button"
+        onClick={() => void shareAndCopy()}
+        disabled={busy}
+        className={chipClass}
+      >
+        {copied ? "Copied" : "Copy link"}
+      </button>
+      <button
+        type="button"
+        onClick={() => void unshare()}
+        disabled={busy}
+        aria-label="Stop sharing this episode"
+        className={`rounded-full px-1.5 py-2 text-[12px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal ${
+          dark ? "text-dark-3xt hover:text-dark-text" : "text-ink-4 hover:text-ink"
+        }`}
+      >
+        Unshare
+      </button>
+    </span>
   );
 }

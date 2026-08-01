@@ -1,258 +1,241 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import type { CSSProperties } from "react";
+import { isSingleVoiceFormat, normalizeOptions } from "@/lib/options";
 import type { Episode } from "@/lib/types";
 import { formatTime } from "./format";
+import { SKIP_SECONDS, usePlayer } from "./PlayerProvider";
+import DownloadButton from "./DownloadButton";
+import ShareButton from "./ShareButton";
+import PlayButton from "./ui/PlayButton";
+import Eyebrow from "./ui/Eyebrow";
 
-interface PlayerProps {
-  episode: Episode;
-  onClose: () => void;
-}
+const BAR_HEIGHTS = [30, 56, 88, 44, 72, 36, 60];
 
-const SKIP_SECONDS = 15;
-const SPEEDS = [1, 1.25, 1.5, 2, 3, 0.75];
-const SPEED_KEY = "playback-speed";
-const RESUME_KEY_PREFIX = "resume:";
-
-function readSavedSpeed(): number {
-  try {
-    const v = Number(localStorage.getItem(SPEED_KEY));
-    return SPEEDS.includes(v) ? v : 1;
-  } catch {
-    return 1;
+function voicesLine(episode: Episode): string {
+  const options = normalizeOptions(episode.options);
+  if (episode.mode === "reading") return `Read aloud · ${options.readerVoice}`;
+  if (isSingleVoiceFormat(options.format)) {
+    return `One voice · ${options.hostVoice}`;
   }
-}
-const RESUME_SAVE_INTERVAL_S = 3;
-// Don't bother resuming right at the start, and restart finished episodes.
-const RESUME_MIN_S = 10;
-const RESUME_END_MARGIN_S = 5;
-
-function readResumePosition(episodeId: string): number {
-  try {
-    const raw = localStorage.getItem(RESUME_KEY_PREFIX + episodeId);
-    const value = raw ? Number(raw) : NaN;
-    return Number.isFinite(value) && value > RESUME_MIN_S ? value : 0;
-  } catch {
-    return 0;
-  }
+  return `Two hosts · ${options.hostVoice} & ${options.guestVoice}`;
 }
 
-function writeResumePosition(episodeId: string, seconds: number) {
-  try {
-    localStorage.setItem(RESUME_KEY_PREFIX + episodeId, String(seconds));
-  } catch {
-    // Storage full/blocked: resume is best-effort.
-  }
+function SkipButton({
+  direction,
+  onClick,
+}: {
+  direction: -1 | 1;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={
+        direction === -1
+          ? `Rewind ${SKIP_SECONDS} seconds`
+          : `Forward ${SKIP_SECONDS} seconds`
+      }
+      className="relative rounded-full p-2 text-dark-text transition-colors hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+    >
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="size-8"
+        aria-hidden="true"
+      >
+        {direction === -1 ? (
+          <>
+            <path d="M9.5 3.5 7 6l2.5 2.5" />
+            <path d="M7 6h6.5a7 7 0 1 1-7 7" />
+          </>
+        ) : (
+          <>
+            <path d="m14.5 3.5 2.5 2.5-2.5 2.5" />
+            <path d="M17 6h-6.5a7 7 0 1 0 7 7" />
+          </>
+        )}
+      </svg>
+      <span
+        className="absolute inset-0 flex items-center justify-center pt-2.5 font-mono text-[8px] font-medium"
+        aria-hidden="true"
+      >
+        {SKIP_SECONDS}
+      </span>
+    </button>
+  );
 }
 
-function clearResumePosition(episodeId: string) {
-  try {
-    localStorage.removeItem(RESUME_KEY_PREFIX + episodeId);
-  } catch {
-    // ignore
-  }
-}
-const HANDLED_ACTIONS: MediaSessionAction[] = [
-  "play",
-  "pause",
-  "seekbackward",
-  "seekforward",
-  "seekto",
-  "stop",
-];
-
-export default function Player({ episode, onClose }: PlayerProps) {
-  const audioRef = useRef<HTMLAudioElement>(null);
-  const lastSavedRef = useRef(0);
-  const restoredRef = useRef(false);
-  const [playing, setPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(episode.durationSeconds ?? 0);
-  const [speed, setSpeed] = useState(1);
-
-  useEffect(() => {
-    const saved = readSavedSpeed();
-    setSpeed(saved);
-    if (audioRef.current) audioRef.current.playbackRate = saved;
-  }, []);
-
-  const cycleSpeed = useCallback(() => {
-    setSpeed((current) => {
-      const next = SPEEDS[(SPEEDS.indexOf(current) + 1) % SPEEDS.length];
-      if (audioRef.current) audioRef.current.playbackRate = next;
-      try {
-        localStorage.setItem(SPEED_KEY, String(next));
-      } catch {
-        // best-effort
-      }
-      return next;
-    });
-  }, []);
-
-  const src = `/api/episodes/${episode.id}/audio`;
-
-  const seekTo = useCallback((time: number, useFastSeek = false) => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    let target = Math.max(0, time);
-    if (Number.isFinite(audio.duration)) {
-      target = Math.min(target, audio.duration);
-    }
-    const maybeFast = audio as HTMLAudioElement & {
-      fastSeek?: (time: number) => void;
-    };
-    if (useFastSeek && typeof maybeFast.fastSeek === "function") {
-      maybeFast.fastSeek(target);
-    } else {
-      audio.currentTime = target;
-    }
-  }, []);
-
-  const updatePositionState = useCallback(() => {
-    if (!("mediaSession" in navigator)) return;
-    const audio = audioRef.current;
-    if (!audio || !Number.isFinite(audio.duration)) return;
-    if (typeof navigator.mediaSession.setPositionState !== "function") return;
-    navigator.mediaSession.setPositionState({
-      duration: audio.duration,
-      playbackRate: audio.playbackRate,
-      position: Math.min(audio.currentTime, audio.duration),
-    });
-  }, []);
-
-  // The parent remounts this component per episode (key={episode.id}), so
-  // playback starts once on mount, continuing from the last saved position.
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    const saved = readResumePosition(episode.id);
-    if (saved > 0) {
-      // Seeking before metadata loads is unreliable; apply on both paths.
-      const apply = () => {
-        if (restoredRef.current) return;
-        if (
-          Number.isFinite(audio.duration) &&
-          saved < audio.duration - RESUME_END_MARGIN_S
-        ) {
-          audio.currentTime = saved;
-          setCurrentTime(saved);
-        }
-        restoredRef.current = true;
-      };
-      if (audio.readyState >= 1) apply();
-      else audio.addEventListener("loadedmetadata", apply, { once: true });
-    } else {
-      restoredRef.current = true;
-    }
-    audio.play().catch(() => {
-      // Autoplay can be blocked; the user can press play manually.
-    });
-  }, [episode.id]);
-
-  // Persist position on unmount so switching episodes/closing keeps progress.
-  useEffect(() => {
-    const audio = audioRef.current;
-    return () => {
-      if (audio && audio.currentTime > RESUME_MIN_S && !audio.ended) {
-        writeResumePosition(episode.id, audio.currentTime);
-      }
-    };
-  }, [episode.id]);
-
-  useEffect(() => {
-    if (!("mediaSession" in navigator)) return;
-    navigator.mediaSession.metadata = new MediaMetadata({
-      title: episode.title,
-      artist: "PDF Podcast",
-      album: episode.sourceFilename,
-      artwork: [
-        { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
-      ],
-    });
-    return () => {
-      navigator.mediaSession.metadata = null;
-    };
-  }, [episode.title, episode.sourceFilename]);
-
-  useEffect(() => {
-    if (!("mediaSession" in navigator)) return;
-    const session = navigator.mediaSession;
-
-    session.setActionHandler("play", () => {
-      audioRef.current?.play().catch(() => {});
-    });
-    session.setActionHandler("pause", () => {
-      audioRef.current?.pause();
-    });
-    session.setActionHandler("seekbackward", (details) => {
-      const audio = audioRef.current;
-      if (!audio) return;
-      seekTo(audio.currentTime - (details.seekOffset ?? SKIP_SECONDS));
-    });
-    session.setActionHandler("seekforward", (details) => {
-      const audio = audioRef.current;
-      if (!audio) return;
-      seekTo(audio.currentTime + (details.seekOffset ?? SKIP_SECONDS));
-    });
-    session.setActionHandler("seekto", (details) => {
-      if (typeof details.seekTime === "number") {
-        seekTo(details.seekTime, details.fastSeek === true);
-      }
-    });
-    session.setActionHandler("stop", () => {
-      const audio = audioRef.current;
-      if (audio) {
-        audio.pause();
-        audio.currentTime = 0;
-      }
-      session.playbackState = "none";
-    });
-
-    return () => {
-      for (const action of HANDLED_ACTIONS) {
-        session.setActionHandler(action, null);
-      }
-      try {
-        // Calling with no arguments clears the lock-screen position UI;
-        // not all browsers implement it.
-        session.setPositionState?.();
-      } catch {
-        // Ignore: unsupported or partial implementations may throw.
-      }
-      session.playbackState = "none";
-    };
-  }, [seekTo]);
-
-  const setSessionPlaybackState = (state: MediaSessionPlaybackState) => {
-    if ("mediaSession" in navigator) {
-      navigator.mediaSession.playbackState = state;
-    }
-  };
-
-  const togglePlay = () => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    if (audio.paused) {
-      audio.play().catch(() => {});
-    } else {
-      audio.pause();
-    }
-  };
-
+function SeekSlider({ light = false }: { light?: boolean }) {
+  const { currentTime, duration, seekTo } = usePlayer();
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
+  return (
+    <input
+      type="range"
+      className={`seek-slider ${light ? "seek-slider-light" : ""} w-full`}
+      style={{ "--seek-progress": `${progressPercent}%` } as CSSProperties}
+      min={0}
+      max={duration > 0 ? duration : 1}
+      step="any"
+      value={Math.min(currentTime, duration > 0 ? duration : 1)}
+      disabled={!(duration > 0)}
+      onChange={(event) => seekTo(Number(event.target.value))}
+      aria-label="Seek"
+      aria-valuetext={`${formatTime(currentTime)} of ${formatTime(duration)}`}
+    />
+  );
+}
+
+function CloseButton({ dark }: { dark?: boolean }) {
+  const { close } = usePlayer();
+  return (
+    <button
+      type="button"
+      onClick={close}
+      aria-label="Close player"
+      className={`shrink-0 rounded-full p-1.5 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal ${
+        dark ? "text-dark-3xt hover:text-dark-text" : "text-ink-4 hover:text-ink"
+      }`}
+    >
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        className="size-4"
+        aria-hidden="true"
+      >
+        <path d="M6 6l12 12M18 6 6 18" />
+      </svg>
+    </button>
+  );
+}
+
+function MiniPlayer() {
+  const { episode, playing, currentTime, duration, speed, toggle, setExpanded } =
+    usePlayer();
+  if (!episode) return null;
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-20 border-t border-zinc-800 bg-zinc-950/90 backdrop-blur">
-      <div className="mx-auto w-full max-w-xl px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
-        <div className="flex items-center justify-between gap-3">
-          <p className="min-w-0 truncate text-sm font-medium text-zinc-100">
-            {episode.title}
-          </p>
+    <>
+      {/* Mobile: floating card, tap to open the full player. */}
+      <div
+        className="fixed inset-x-0 z-30 mx-3.5 lg:hidden"
+        style={{ bottom: "calc(0.875rem + var(--mini-lift, 0px))" }}
+      >
+        <div className="flex items-center gap-3 rounded-[18px] border border-line bg-card px-3 py-2.5 shadow-[0_4px_16px_rgba(23,21,15,.09)]">
+          <PlayButton
+            size="xs"
+            playing={playing}
+            onClick={toggle}
+            aria-label={playing ? `Pause ${episode.title}` : `Play ${episode.title}`}
+          />
           <button
             type="button"
-            onClick={onClose}
-            aria-label="Close player"
-            className="shrink-0 rounded-full p-1.5 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
+            onClick={() => setExpanded(true)}
+            className="min-w-0 flex-1 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+            aria-label={`Open player for ${episode.title}`}
+          >
+            <p className="truncate text-[12.5px] font-medium text-ink">
+              {episode.title}
+            </p>
+            <p className="font-mono text-[10px] text-ink-4">
+              {formatTime(currentTime)} / {formatTime(duration)}
+            </p>
+          </button>
+          <button
+            type="button"
+            onClick={() => setExpanded(true)}
+            aria-label={`Playback speed ${speed}×`}
+            className="shrink-0 font-mono text-[11px] text-ink-3"
+          >
+            {speed}×
+          </button>
+          <CloseButton />
+        </div>
+      </div>
+
+      {/* Laptop: docked dark bar. */}
+      <div className="fixed inset-x-0 bottom-0 z-30 hidden bg-dark px-[60px] py-3 lg:block">
+        <div className="mx-auto flex max-w-[1140px] items-center gap-4">
+          <PlayButton
+            size="sm"
+            focal
+            playing={playing}
+            onClick={toggle}
+            aria-label={playing ? `Pause ${episode.title}` : `Play ${episode.title}`}
+          />
+          <span className="font-mono text-[11.5px] tabular-nums text-dark-2xt">
+            {formatTime(currentTime)}
+          </span>
+          <div className="flex-1">
+            <SeekSlider />
+          </div>
+          <span className="font-mono text-[11.5px] tabular-nums text-dark-2xt">
+            {formatTime(duration)}
+          </span>
+          <p className="max-w-[260px] truncate text-[13px] font-medium text-dark-text">
+            {episode.title}
+          </p>
+          <SpeedButton dark />
+          <CloseButton dark />
+        </div>
+      </div>
+    </>
+  );
+}
+
+function SpeedButton({ dark = false }: { dark?: boolean }) {
+  const { speed, cycleSpeed } = usePlayer();
+  return (
+    <button
+      type="button"
+      onClick={cycleSpeed}
+      aria-label={`Playback speed ${speed}×, tap to change`}
+      className={`w-[38px] shrink-0 rounded-full py-1 text-center font-mono text-[13px] tabular-nums transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal ${
+        dark ? "text-dark-2xt hover:text-dark-text" : "text-ink-3 hover:text-ink"
+      }`}
+    >
+      {speed}×
+    </button>
+  );
+}
+
+function FullPlayer() {
+  const {
+    episode,
+    playing,
+    currentTime,
+    duration,
+    toggle,
+    skip,
+    setExpanded,
+  } = usePlayer();
+  if (!episode) return null;
+
+  const remaining = Math.max(0, duration - currentTime);
+
+  return (
+    <div
+      className="fixed inset-0 z-40 overflow-y-auto bg-dark"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Now playing: ${episode.title}`}
+    >
+      <div className="mx-auto flex min-h-full w-full max-w-[420px] flex-col px-6 pt-[calc(1rem+env(safe-area-inset-top))] pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
+        <div className="flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => setExpanded(false)}
+            aria-label="Collapse player"
+            className="rounded-full p-2 text-dark-2xt hover:text-dark-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
           >
             <svg
               viewBox="0 0 24 24"
@@ -260,165 +243,84 @@ export default function Player({ episode, onClose }: PlayerProps) {
               stroke="currentColor"
               strokeWidth="2"
               strokeLinecap="round"
-              className="h-4 w-4"
-              aria-hidden="true"
-            >
-              <path d="M6 6l12 12M18 6 6 18" />
-            </svg>
-          </button>
-        </div>
-
-        <input
-          type="range"
-          className="seek-slider mt-1 w-full"
-          style={{ "--seek-progress": `${progressPercent}%` } as React.CSSProperties}
-          min={0}
-          max={duration > 0 ? duration : 1}
-          step="any"
-          value={Math.min(currentTime, duration > 0 ? duration : 1)}
-          disabled={!(duration > 0)}
-          onChange={(event) => seekTo(Number(event.target.value))}
-          aria-label="Seek"
-          aria-valuetext={`${formatTime(currentTime)} of ${formatTime(duration)}`}
-        />
-
-        <div className="flex items-center justify-between font-mono text-[11px] tabular-nums text-zinc-400">
-          <span>{formatTime(currentTime)}</span>
-          <span>{formatTime(duration)}</span>
-        </div>
-
-        <div className="mt-1 flex items-center justify-center gap-6">
-          <button
-            type="button"
-            onClick={cycleSpeed}
-            aria-label={`Playback speed ${speed}x, tap to change`}
-            className="w-12 shrink-0 rounded-full px-2 py-1 text-sm font-semibold tabular-nums text-zinc-300 hover:bg-zinc-800 hover:text-white"
-          >
-            {speed}×
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              const audio = audioRef.current;
-              if (audio) seekTo(audio.currentTime - SKIP_SECONDS);
-            }}
-            aria-label="Rewind 15 seconds"
-            className="relative rounded-full p-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
               strokeLinejoin="round"
-              className="h-8 w-8"
+              className="size-4"
               aria-hidden="true"
             >
-              <path d="M9.5 3.5 7 6l2.5 2.5" />
-              <path d="M7 6h6.5a7 7 0 1 1-7 7" />
+              <path d="m5 9 7 7 7-7" />
             </svg>
-            <span
-              className="absolute inset-0 flex items-center justify-center pt-2.5 text-[8px] font-bold"
-              aria-hidden="true"
-            >
-              15
-            </span>
           </button>
+          <Eyebrow className="text-dark-3xt!">Now playing</Eyebrow>
+          <span className="size-8" aria-hidden="true" />
+        </div>
 
-          <button
-            type="button"
-            onClick={togglePlay}
+        <div className="mt-6 flex aspect-square items-end justify-center gap-[5px] rounded-[20px] bg-dark-2 p-10">
+          {BAR_HEIGHTS.map((height, index) => (
+            <span
+              key={index}
+              className={`w-full max-w-[34px] rounded-[5px] origin-bottom ${
+                index === 2 || index === 3 ? "bg-signal" : "bg-dark-3"
+              } ${playing ? "motion-safe:animate-[eq-bar_1.3s_ease-in-out_infinite]" : ""}`}
+              style={{
+                height: `${height}%`,
+                animationDelay: `${index * 0.13}s`,
+              }}
+              aria-hidden="true"
+            />
+          ))}
+        </div>
+
+        <h2 className="mt-6 font-display text-[26px] leading-[1.1] text-dark-text">
+          {episode.title}
+        </h2>
+        <p className="mt-1 text-[12px] text-dark-3xt">{voicesLine(episode)}</p>
+
+        <div className="mt-5">
+          <SeekSlider />
+          <div className="flex items-center justify-between font-mono text-[11px] tabular-nums text-dark-3xt">
+            <span>{formatTime(currentTime)}</span>
+            <span>-{formatTime(remaining)}</span>
+          </div>
+        </div>
+
+        <div className="mt-4 flex items-center justify-between">
+          <SpeedButton dark />
+          <SkipButton direction={-1} onClick={() => skip(-SKIP_SECONDS)} />
+          <PlayButton
+            size="xl"
+            focal
+            playing={playing}
+            onClick={toggle}
             aria-label={playing ? "Pause" : "Play"}
-            className="flex h-14 w-14 items-center justify-center rounded-full bg-violet-500 text-white shadow-lg shadow-violet-500/25 hover:bg-violet-400"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              fill="currentColor"
-              className="h-7 w-7"
-              aria-hidden="true"
-            >
-              {playing ? (
-                <path d="M7 5h3.5v14H7V5Zm6.5 0H17v14h-3.5V5Z" />
-              ) : (
-                <path d="M8.5 5.5v13l10-6.5-10-6.5Z" />
-              )}
-            </svg>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              const audio = audioRef.current;
-              if (audio) seekTo(audio.currentTime + SKIP_SECONDS);
-            }}
-            aria-label="Forward 15 seconds"
-            className="relative rounded-full p-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="h-8 w-8"
-              aria-hidden="true"
-            >
-              <path d="m14.5 3.5 2.5 2.5-2.5 2.5" />
-              <path d="M17 6h-6.5a7 7 0 1 0 7 7" />
-            </svg>
-            <span
-              className="absolute inset-0 flex items-center justify-center pt-2.5 text-[8px] font-bold"
-              aria-hidden="true"
-            >
-              15
-            </span>
-          </button>
-
-          {/* Balances the speed button so play/pause stays centered. */}
-          <span className="w-12 shrink-0" aria-hidden="true" />
+          />
+          <SkipButton direction={1} onClick={() => skip(SKIP_SECONDS)} />
+          <span className="flex w-[38px] justify-center">
+            <DownloadButton episodeId={episode.id} variant="icon" />
+          </span>
         </div>
 
-        <audio
-          ref={audioRef}
-          src={src}
-          preload="metadata"
-          onPlay={(event) => {
-            event.currentTarget.playbackRate = speed;
-            setPlaying(true);
-            setSessionPlaybackState("playing");
-          }}
-          onPause={() => {
-            setPlaying(false);
-            setSessionPlaybackState("paused");
-          }}
-          onEnded={() => {
-            setPlaying(false);
-            setSessionPlaybackState("paused");
-            clearResumePosition(episode.id);
-          }}
-          onTimeUpdate={(event) => {
-            const time = event.currentTarget.currentTime;
-            setCurrentTime(time);
-            updatePositionState();
-            if (
-              restoredRef.current &&
-              time > RESUME_MIN_S &&
-              Math.abs(time - lastSavedRef.current) >= RESUME_SAVE_INTERVAL_S
-            ) {
-              lastSavedRef.current = time;
-              writeResumePosition(episode.id, time);
-            }
-          }}
-          onDurationChange={(event) => {
-            const value = event.currentTarget.duration;
-            if (Number.isFinite(value)) setDuration(value);
-            updatePositionState();
-          }}
-          onRateChange={updatePositionState}
-        />
+        <div className="mt-7 flex justify-center gap-2.5">
+          {episode.script && episode.script.lines.length > 0 && (
+            <Link
+              href={`/e/${episode.id}/transcript`}
+              onClick={() => setExpanded(false)}
+              className="rounded-full bg-dark-2 px-[14px] py-2 text-[12.5px] font-medium text-dark-2xt transition-colors hover:text-dark-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+            >
+              Transcript
+            </Link>
+          )}
+          <ShareButton
+            episodeId={episode.id}
+            initialShared={Boolean(episode.shareToken)}
+            dark
+          />
+        </div>
       </div>
     </div>
   );
+}
+
+export default function Player() {
+  const { expanded } = usePlayer();
+  return expanded ? <FullPlayer /> : <MiniPlayer />;
 }
