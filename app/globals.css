@@ -1,68 +1,73 @@
 @import "tailwindcss";
 
-:root {
-  --background: #0a0a0a;
-  --foreground: #ededed;
-  color-scheme: dark;
-}
+:root { color-scheme: light; }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+@theme {
+  /* surfaces */
+  --color-paper:      #F4F1EC;  /* app background */
+  --color-paper-2:    #EDE8E0;  /* chips, inset rows */
+  --color-paper-3:    #FAF8F5;  /* dropzone fill */
+  --color-card:       #FFFFFF;
+  --color-line:       #DCD5CA;  /* card + input borders */
+  --color-line-2:     #EDE8E0;  /* dividers inside a card */
+
+  /* ink */
+  --color-ink:        #17150F;  /* headings, play circles, dark surfaces */
+  --color-ink-2:      #4A463E;  /* body */
+  --color-ink-3:      #6B675E;  /* secondary */
+  --color-ink-4:      #8B857A;  /* meta */
+  --color-ink-5:      #A8A297;  /* disabled, eyebrow labels */
+
+  /* signal */
+  --color-signal:      #E8481F;  /* primary action, progress, active */
+  --color-signal-press:#C43F17;  /* hover / active */
+  --color-signal-ink:  #B4351A;  /* signal-coloured TEXT only (AA on paper) */
+  --color-signal-tint: #FBE7DF;  /* selected rows, badges, icon wells */
+
+  /* semantic */
+  --color-done:      #2F6F4E;   /* GUEST speaker, success */
+  --color-done-tint: #E4EFE7;
+
+  /* dark (listening surfaces only) */
+  --color-dark:      #17150F;
+  --color-dark-2:    #221E17;   /* chips/controls on dark */
+  --color-dark-3:    #3A352C;   /* inactive track/bars on dark */
+  --color-dark-text: #F4F1EC;
+  --color-dark-2xt:  #B0A99E;   /* secondary text on dark */
+  --color-dark-3xt:  #7A736A;   /* tertiary text on dark */
+
+  --font-display: var(--font-instrument-serif), Georgia, serif;
+  --font-sans:    var(--font-dm-sans), system-ui, sans-serif;
+  --font-mono:    var(--font-dm-mono), ui-monospace, monospace;
+
+  --radius-card:  16px;
+  --radius-panel: 20px;
+  --radius-sheet: 24px;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  background: var(--color-paper);
+  color: var(--color-ink-2);
+  font-family: var(--font-sans);
   -webkit-tap-highlight-color: transparent;
 }
 
-input[type="range"].seek-slider {
-  appearance: none;
-  height: 20px;
-  background: transparent;
-  cursor: pointer;
-}
-
+/* Seek slider — light track, signal fill, ink thumb */
+input[type="range"].seek-slider { appearance: none; height: 20px; background: transparent; cursor: pointer; }
 input[type="range"].seek-slider::-webkit-slider-runnable-track {
-  height: 4px;
-  border-radius: 9999px;
-  background: linear-gradient(
-    to right,
-    #8b5cf6 var(--seek-progress, 0%),
-    #3f3f46 var(--seek-progress, 0%)
-  );
+  height: 3px; border-radius: 9999px;
+  background: linear-gradient(to right, #E8481F var(--seek-progress, 0%), #3A352C var(--seek-progress, 0%));
 }
-
 input[type="range"].seek-slider::-webkit-slider-thumb {
-  appearance: none;
-  margin-top: -5px;
-  width: 14px;
-  height: 14px;
-  border-radius: 9999px;
-  background: #ede9fe;
-  border: none;
+  appearance: none; margin-top: -4px; width: 11px; height: 11px;
+  border-radius: 9999px; background: #F4F1EC; border: none;
 }
+input[type="range"].seek-slider::-moz-range-track { height: 3px; border-radius: 9999px; background: #3A352C; }
+input[type="range"].seek-slider::-moz-range-progress { height: 3px; border-radius: 9999px; background: #E8481F; }
+input[type="range"].seek-slider::-moz-range-thumb { width: 11px; height: 11px; border-radius: 9999px; background: #F4F1EC; border: none; }
 
-input[type="range"].seek-slider::-moz-range-track {
-  height: 4px;
-  border-radius: 9999px;
-  background: #3f3f46;
+/* light variant of the slider, used in the mini player on paper */
+input[type="range"].seek-slider-light::-webkit-slider-runnable-track {
+  background: linear-gradient(to right, #E8481F var(--seek-progress, 0%), #DCD5CA var(--seek-progress, 0%));
 }
-
-input[type="range"].seek-slider::-moz-range-progress {
-  height: 4px;
-  border-radius: 9999px;
-  background: #8b5cf6;
-}
-
-input[type="range"].seek-slider::-moz-range-thumb {
-  width: 14px;
-  height: 14px;
-  border-radius: 9999px;
-  background: #ede9fe;
-  border: none;
-}
+input[type="range"].seek-slider-light::-webkit-slider-thumb { background: #17150F; }

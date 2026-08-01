@@ -1,44 +1,52 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Instrument_Serif, DM_Sans, DM_Mono } from "next/font/google";
 import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const display = Instrument_Serif({
+  variable: "--font-instrument-serif",
+  subsets: ["latin"],
+  weight: "400",
+});
+
+const sans = DM_Sans({
+  variable: "--font-dm-sans",
   subsets: ["latin"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const mono = DM_Mono({
+  variable: "--font-dm-mono",
   subsets: ["latin"],
+  weight: ["400", "500"],
 });
 
+const TITLE = "Earshot — the reading pile you'll actually get through";
 const DESCRIPTION =
-  "Turn any PDF into a podcast you can play on your phone with the screen off, edit before it's made, and trust because it won't make things up.";
+  "Drop in a PDF. Get a hosted episode you can play with the screen off — and edit before it's made.";
 
 export const metadata: Metadata = {
-  title: "PDF Podcast — Listen to your documents anywhere",
+  title: TITLE,
   description: DESCRIPTION,
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
-    title: "PDF Podcast",
+    title: "Earshot",
     statusBarStyle: "black-translucent",
   },
   openGraph: {
-    title: "PDF Podcast — Listen to your documents anywhere",
+    title: TITLE,
     description: DESCRIPTION,
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "PDF Podcast — Listen to your documents anywhere",
+    title: TITLE,
     description: DESCRIPTION,
   },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0a0a0a",
+  themeColor: "#F4F1EC",
 };
 
 export default function RootLayout({
@@ -49,7 +57,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${display.variable} ${sans.variable} ${mono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         <ServiceWorkerRegistration />
