@@ -57,9 +57,9 @@ function roundedRectCoverage(x, y, cx, cy, halfW, halfH, radius) {
 }
 
 function makeIcon(size) {
-  const bg = [10, 10, 10];
-  const plate = [30, 22, 54];
-  const violet = [139, 92, 246];
+  const bg = [23, 21, 15];
+  const plate = [34, 30, 23];
+  const bar = [232, 72, 31];
   const rgba = Buffer.alloc(size * size * 4);
 
   const plateHalf = size * 0.42;
@@ -93,9 +93,9 @@ function makeIcon(size) {
           x, y, barCx, center, barWidth / 2, halfH, barWidth / 2,
         );
         if (cov > 0) {
-          r = r + (violet[0] - r) * cov;
-          g = g + (violet[1] - g) * cov;
-          b = b + (violet[2] - b) * cov;
+          r = r + (bar[0] - r) * cov;
+          g = g + (bar[1] - g) * cov;
+          b = b + (bar[2] - b) * cov;
         }
       }
 

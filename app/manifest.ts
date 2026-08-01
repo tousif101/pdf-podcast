@@ -2,13 +2,13 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "PDF Podcast",
-    short_name: "PDFPod",
-    description: "Turn any PDF into a two-voice podcast episode.",
+    name: "Earshot",
+    short_name: "Earshot",
+    description: "Documents, out loud. Turn any PDF into a hosted episode.",
     start_url: "/",
     display: "standalone",
-    background_color: "#0a0a0a",
-    theme_color: "#0a0a0a",
+    background_color: "#F4F1EC",
+    theme_color: "#F4F1EC",
     icons: [
       {
         src: "/icons/icon-192.png",

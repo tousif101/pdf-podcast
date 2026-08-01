@@ -29,11 +29,11 @@ export default function AuthGate() {
   if (state.status === "loading") {
     return (
       <div
-        className="flex min-h-dvh items-center justify-center"
+        className="flex min-h-dvh items-center justify-center bg-paper"
         role="status"
         aria-label="Loading"
       >
-        <span className="h-8 w-8 animate-spin rounded-full border-2 border-violet-400 border-t-transparent" />
+        <span className="size-6 animate-spin rounded-full border-2 border-signal border-t-transparent" />
       </div>
     );
   }

@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import Button from "./ui/Button";
+import Field from "./ui/Field";
 
 export default function SignIn() {
   const [email, setEmail] = useState("");
@@ -38,31 +40,35 @@ export default function SignIn() {
   };
 
   return (
-    <div className="w-full rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6">
+    <div className="w-full max-w-[380px]">
       {sent ? (
-        <div role="status" className="text-center">
-          <p className="font-medium text-zinc-100">Check your email</p>
-          <p className="mt-1 text-sm text-zinc-400">
+        <div role="status">
+          <h1 className="font-display text-3xl leading-[1.1] text-ink">
+            Check your email
+          </h1>
+          <p className="mt-2 text-[13.5px] leading-[1.55] text-ink-2">
             We sent a sign-in link to {email}. Open it on this device.
           </p>
           <button
             type="button"
             onClick={() => setSent(false)}
-            className="mt-4 text-sm text-violet-400 hover:text-violet-300"
+            className="mt-5 text-[13px] font-medium text-signal-ink underline underline-offset-[3px]"
           >
             Use a different email
           </button>
         </div>
       ) : (
         <>
-          <p className="mb-3 text-center text-sm font-medium text-zinc-200">
-            Start free — 5 episodes on us
+          <h1 className="font-display text-3xl leading-[1.1] text-ink">
+            Sign in
+          </h1>
+          <p className="mt-2 text-[13.5px] leading-[1.55] text-ink-2">
+            No password. We&apos;ll email you a link that signs you in on this
+            device.
           </p>
-          <form onSubmit={sendMagicLink} className="space-y-3">
-            <label className="sr-only" htmlFor="email">
-              Email address
-            </label>
-            <input
+          <form onSubmit={sendMagicLink} className="mt-6 space-y-4">
+            <Field
+              label="Email"
               id="email"
               type="email"
               required
@@ -70,35 +76,42 @@ export default function SignIn() {
               placeholder="you@example.com"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              className="w-full rounded-xl border border-zinc-700 bg-zinc-950/60 px-4 py-3 text-zinc-100 placeholder:text-zinc-500 focus:border-violet-500 focus:outline-none"
             />
-            <button
+            <Button
               type="submit"
               disabled={busy}
-              className="w-full rounded-xl bg-violet-500 px-4 py-3 font-medium text-white hover:bg-violet-400 disabled:opacity-60"
+              className="min-h-[52px] w-full"
             >
-              {busy ? "Sending…" : "Email me a sign-in link"}
-            </button>
+              {busy ? "Sending…" : "Email me a link"}
+            </Button>
           </form>
 
-          <div className="my-4 flex items-center gap-3 text-xs text-zinc-600">
-            <span className="h-px flex-1 bg-zinc-800" />
+          <div className="my-5 flex items-center gap-3 text-[12px] text-ink-4">
+            <span className="h-px flex-1 bg-line" />
             or
-            <span className="h-px flex-1 bg-zinc-800" />
+            <span className="h-px flex-1 bg-line" />
           </div>
 
-          <button
-            type="button"
+          <Button
+            variant="secondary"
             onClick={() => void signInWithGoogle()}
-            className="w-full rounded-xl border border-zinc-700 bg-zinc-950/60 px-4 py-3 font-medium text-zinc-100 hover:border-zinc-500"
+            className="w-full"
           >
             Continue with Google
-          </button>
+          </Button>
+
+          <p className="mt-5 text-center text-[11px] text-ink-5">
+            By continuing you agree to the{" "}
+            <a href="/legal" className="text-signal-ink underline underline-offset-2">
+              terms
+            </a>
+            .
+          </p>
         </>
       )}
 
       {error && (
-        <p role="alert" className="mt-4 text-center text-sm text-red-400">
+        <p role="alert" className="mt-4 text-[13px] text-signal-ink">
           {error}
         </p>
       )}

@@ -1,22 +1,30 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "Privacy & Terms — PDF Podcast",
+  title: "Privacy & Terms — Earshot",
 };
 
 export default function LegalPage() {
   return (
-    <main className="mx-auto max-w-2xl px-5 py-12 text-zinc-300">
-      <a href="/" className="text-sm text-violet-400 hover:text-violet-300">
+    <main className="mx-auto max-w-2xl px-5 py-12">
+      <Link
+        href="/"
+        className="text-[13px] font-medium text-signal-ink underline underline-offset-[3px]"
+      >
         ← Back
-      </a>
-      <h1 className="mt-6 text-2xl font-semibold text-zinc-50">
+      </Link>
+      <h1 className="mt-6 font-display text-3xl leading-[1.1] text-ink">
         Privacy &amp; Terms
       </h1>
-      <p className="mt-2 text-sm text-zinc-500">Last updated: July 2026</p>
+      <p className="mt-2 font-mono text-[11.5px] text-ink-4">
+        Last updated: July 2026
+      </p>
 
-      <section className="mt-8 space-y-3 text-sm leading-relaxed">
-        <h2 className="text-lg font-medium text-zinc-100">What we store</h2>
+      <section className="mt-8 space-y-3 text-[13.5px] leading-[1.65] text-ink-2">
+        <h2 className="font-display text-[22px] leading-[1.15] text-ink">
+          What we store
+        </h2>
         <p>
           When you sign in we store your email address (via Supabase Auth). When
           you create an episode we store the uploaded PDF, the generated script,
@@ -24,7 +32,7 @@ export default function LegalPage() {
           any time, which removes its files.
         </p>
 
-        <h2 className="pt-2 text-lg font-medium text-zinc-100">
+        <h2 className="pt-2 font-display text-[22px] leading-[1.15] text-ink">
           Third parties
         </h2>
         <p>
@@ -34,7 +42,7 @@ export default function LegalPage() {
           We don&apos;t sell your data.
         </p>
 
-        <h2 className="pt-2 text-lg font-medium text-zinc-100">
+        <h2 className="pt-2 font-display text-[22px] leading-[1.15] text-ink">
           Sharing &amp; feeds
         </h2>
         <p>
@@ -43,15 +51,19 @@ export default function LegalPage() {
           secret. Removing the share stops access.
         </p>
 
-        <h2 className="pt-2 text-lg font-medium text-zinc-100">Terms</h2>
+        <h2 className="pt-2 font-display text-[22px] leading-[1.15] text-ink">
+          Terms
+        </h2>
         <p>
-          Use PDF Podcast only with documents you have the right to use. The
+          Use Earshot only with documents you have the right to use. The
           service is provided as-is without warranty. Generated audio may
           contain errors — verify anything important against the source. Credits
           are non-refundable except where required by law.
         </p>
 
-        <h2 className="pt-2 text-lg font-medium text-zinc-100">Contact</h2>
+        <h2 className="pt-2 font-display text-[22px] leading-[1.15] text-ink">
+          Contact
+        </h2>
         <p>Questions? Reach out to the address on the account you signed up with.</p>
       </section>
     </main>
